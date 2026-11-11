@@ -1,37 +1,58 @@
 import { Booking } from './booking.model.js';
 import { Train } from '../trains/train.model.js';
+import { Journey } from '../journeys/journey.model.js';
 
-// @desc    Create a new train ticket booking
-// @access  Protected (Logged-in users only)
+// @desc    Create a new train ticket booking with ACID Transactions
+// @access  Protected
 export const createBooking = async (req, res, next) => {
+  // Start a MongoDB session for the transaction
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const { trainId, journeyDate, sourceStation, destinationStation, coachClass, passengers } = req.body;
+    const passengerCount = passengers.length;
 
-    // 1. Verify the Train exists
-    const train = await Train.findById(trainId);
-    if (!train || !train.isActive) {
-      return res.status(404).json({ status: 'fail', message: 'Train not found or inactive' });
+    // 1. Find the specific Journey for this date
+    const journey = await Journey.findOne({ 
+      train: trainId, 
+      journeyDate: new Date(journeyDate) 
+    }).session(session); // Lock this query to the current transaction session
+
+    if (!journey) {
+      throw new Error('Booking is not open for this train on this date');
     }
 
-    // 2. Find the requested coach class to get the base fare
-    const selectedClass = train.coachClasses.find(c => c.classType === coachClass);
-    if (!selectedClass) {
-      return res.status(400).json({ status: 'fail', message: `Class ${coachClass} is not available on this train` });
+    // 2. Find the requested coach class in the live inventory
+    const classInventory = journey.seatInventory.find(c => c.classType === coachClass);
+    if (!classInventory) {
+      throw new Error(`Class ${coachClass} is not available on this train`);
     }
 
-    // 3. Calculate total fare
-    const totalFare = selectedClass.baseFare * passengers.length;
+    // 3. Check for seat availability (Strict Concurrency Check)
+    if (classInventory.availableSeats < passengerCount) {
+      throw new Error(`Only ${classInventory.availableSeats} seats available in ${coachClass}`);
+    }
 
-    // 4. Assign mock seat numbers for realism (in a real app, this queries a Seat inventory model)
-    const passengersWithSeats = passengers.map((p, index) => ({
+    // 4. Fetch Train template to calculate fare
+    const train = await Train.findById(trainId).session(session);
+    const trainClassConfig = train.coachClasses.find(c => c.classType === coachClass);
+    const totalFare = trainClassConfig.baseFare * passengerCount;
+
+    // 5. Decrement the live seat inventory
+    classInventory.availableSeats -= passengerCount;
+    await journey.save({ session }); // Save inventory changes within the transaction
+
+    // 6. Assign seat numbers (Simplified for now)
+    const passengersWithSeats = passengers.map((p) => ({
       ...p,
-      seatNumber: `${coachClass}-${Math.floor(Math.random() * 50) + 1}`,
+      seatNumber: `${coachClass}-${classInventory.availableSeats + Math.floor(Math.random() * 10)}`,
       status: 'CONFIRMED'
     }));
 
-    // 5. Create the Booking
-    const newBooking = await Booking.create({
-      user: req.user._id, // Got this from the `protect` middleware
+    // 7. Create the Booking document within the transaction
+    const [newBooking] = await Booking.create([{
+      user: req.user._id,
       train: trainId,
       journeyDate: new Date(journeyDate),
       sourceStation,
@@ -39,13 +60,27 @@ export const createBooking = async (req, res, next) => {
       coachClass,
       passengers: passengersWithSeats,
       totalFare
-    });
+    }], { session });
+
+    // 8. COMMIT TRANSACTION: If everything succeeded, apply changes to database
+    await session.commitTransaction();
+    session.endSession();
 
     res.status(201).json({
       status: 'success',
       data: { booking: newBooking }
     });
+
   } catch (error) {
+    // 9. ABORT TRANSACTION: If ANYTHING fails, rollback all database changes
+    await session.abortTransaction();
+    session.endSession();
+
+    // Pass the error to the global error handler
+    // If it's our custom error string, wrap it properly. Otherwise, pass the raw error.
+    if (error.message) {
+        return res.status(400).json({ status: 'fail', message: error.message });
+    }
     next(error);
   }
 };
