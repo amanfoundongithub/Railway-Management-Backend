@@ -1,56 +1,54 @@
 import { Booking } from './booking.model.js';
 import { Train } from '../trains/train.model.js';
 import { Journey } from '../journeys/journey.model.js';
+import mongoose from 'mongoose';
 
-// @desc    Create a new train ticket booking with ACID Transactions
-// @access  Protected
+// @desc    Create a new train ticket (Handles Confirmed & Waitlist)
 export const createBooking = async (req, res, next) => {
-  // Start a MongoDB session for the transaction
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
     const { trainId, journeyDate, sourceStation, destinationStation, coachClass, passengers } = req.body;
-    const passengerCount = passengers.length;
 
-    // 1. Find the specific Journey for this date
     const journey = await Journey.findOne({ 
       train: trainId, 
       journeyDate: new Date(journeyDate) 
-    }).session(session); // Lock this query to the current transaction session
+    }).session(session);
 
-    if (!journey) {
-      throw new Error('Booking is not open for this train on this date');
-    }
+    if (!journey) throw new Error('Booking is not open for this train on this date');
 
-    // 2. Find the requested coach class in the live inventory
     const classInventory = journey.seatInventory.find(c => c.classType === coachClass);
-    if (!classInventory) {
-      throw new Error(`Class ${coachClass} is not available on this train`);
-    }
+    if (!classInventory) throw new Error(`Class ${coachClass} is not available`);
 
-    // 3. Check for seat availability (Strict Concurrency Check)
-    if (classInventory.availableSeats < passengerCount) {
-      throw new Error(`Only ${classInventory.availableSeats} seats available in ${coachClass}`);
-    }
-
-    // 4. Fetch Train template to calculate fare
+    // Calculate total fare
     const train = await Train.findById(trainId).session(session);
     const trainClassConfig = train.coachClasses.find(c => c.classType === coachClass);
-    const totalFare = trainClassConfig.baseFare * passengerCount;
+    const totalFare = trainClassConfig.baseFare * passengers.length;
 
-    // 5. Decrement the live seat inventory
-    classInventory.availableSeats -= passengerCount;
-    await journey.save({ session }); // Save inventory changes within the transaction
+    // Allocate seats or assign waitlist passenger by passenger
+    const passengersWithSeats = [];
+    
+    for (const p of passengers) {
+      if (classInventory.availableSeats > 0) {
+        passengersWithSeats.push({
+          ...p,
+          seatNumber: `${coachClass}-${classInventory.availableSeats}`,
+          status: 'CONFIRMED'
+        });
+        classInventory.availableSeats -= 1;
+      } else {
+        classInventory.waitlistCount += 1;
+        passengersWithSeats.push({
+          ...p,
+          seatNumber: `WL-${classInventory.waitlistCount}`,
+          status: 'WAITLISTED'
+        });
+      }
+    }
 
-    // 6. Assign seat numbers (Simplified for now)
-    const passengersWithSeats = passengers.map((p) => ({
-      ...p,
-      seatNumber: `${coachClass}-${classInventory.availableSeats + Math.floor(Math.random() * 10)}`,
-      status: 'CONFIRMED'
-    }));
+    await journey.save({ session }); 
 
-    // 7. Create the Booking document within the transaction
     const [newBooking] = await Booking.create([{
       user: req.user._id,
       train: trainId,
@@ -62,7 +60,6 @@ export const createBooking = async (req, res, next) => {
       totalFare
     }], { session });
 
-    // 8. COMMIT TRANSACTION: If everything succeeded, apply changes to database
     await session.commitTransaction();
     session.endSession();
 
@@ -70,17 +67,10 @@ export const createBooking = async (req, res, next) => {
       status: 'success',
       data: { booking: newBooking }
     });
-
   } catch (error) {
-    // 9. ABORT TRANSACTION: If ANYTHING fails, rollback all database changes
     await session.abortTransaction();
     session.endSession();
-
-    // Pass the error to the global error handler
-    // If it's our custom error string, wrap it properly. Otherwise, pass the raw error.
-    if (error.message) {
-        return res.status(400).json({ status: 'fail', message: error.message });
-    }
+    if (error.message) return res.status(400).json({ status: 'fail', message: error.message });
     next(error);
   }
 };
@@ -122,6 +112,101 @@ export const getBookingByPNR = async (req, res, next) => {
       data: { booking }
     });
   } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Cancel a booking and auto-upgrade waitlisted passengers
+export const cancelBooking = async (req, res, next) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const { id } = req.params;
+    const booking = await Booking.findById(id).session(session);
+
+    if (!booking) throw new Error('Booking not found');
+    if (booking.user.toString() !== req.user._id.toString() && req.user.role !== 'ADMIN') {
+      throw new Error('You do not have permission to cancel this booking');
+    }
+    if (booking.bookingStatus === 'CANCELLED') throw new Error('This booking is already cancelled');
+    if (new Date(booking.journeyDate) < new Date()) throw new Error('Cannot cancel a past journey');
+
+    // Track what is being cancelled to know how many seats to give to the waitlist
+    let confirmedCancelled = 0;
+    let wlCancelled = 0;
+    const freedSeats = [];
+
+    booking.passengers.forEach(p => {
+      if (p.status === 'CONFIRMED') {
+        confirmedCancelled++;
+        freedSeats.push(p.seatNumber);
+      } else if (p.status === 'WAITLISTED') {
+        wlCancelled++;
+      }
+      p.status = 'CANCELLED';
+    });
+    
+    booking.bookingStatus = 'CANCELLED';
+    await booking.save({ session });
+
+    const journey = await Journey.findOne({
+      train: booking.train,
+      journeyDate: booking.journeyDate
+    }).session(session);
+
+    if (journey) {
+      const classInventory = journey.seatInventory.find(c => c.classType === booking.coachClass);
+      
+      if (classInventory) {
+        classInventory.waitlistCount -= wlCancelled;
+
+        // If confirmed seats were freed, auto-upgrade the waitlist
+        if (confirmedCancelled > 0) {
+          // Find active bookings with waitlisted passengers, oldest first
+          const wlBookings = await Booking.find({
+            train: booking.train,
+            journeyDate: booking.journeyDate,
+            coachClass: booking.coachClass,
+            'passengers.status': 'WAITLISTED',
+            bookingStatus: { $ne: 'CANCELLED' } 
+          }).sort({ createdAt: 1 }).session(session);
+
+          for (const wlBooking of wlBookings) {
+            let modified = false;
+            
+            for (const p of wlBooking.passengers) {
+              if (p.status === 'WAITLISTED' && freedSeats.length > 0) {
+                p.status = 'CONFIRMED';
+                p.seatNumber = freedSeats.pop(); // Assign the freed seat
+                classInventory.waitlistCount -= 1;
+                modified = true;
+              }
+            }
+            if (modified) await wlBooking.save({ session });
+            if (freedSeats.length === 0) break; // Stop if we run out of freed seats
+          }
+
+          // If there are still freed seats left (nobody on waitlist), return them to inventory
+          classInventory.availableSeats += freedSeats.length;
+        }
+        await journey.save({ session });
+      }
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Booking cancelled successfully. Seats reallocated.',
+      data: { booking }
+    });
+
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    if (error.message) return res.status(400).json({ status: 'fail', message: error.message });
     next(error);
   }
 };
