@@ -17,6 +17,9 @@ const inventorySchema = new mongoose.Schema({
   waitlistCount: {
     type: Number,
     default: 0,
+  },
+  baseFare: {
+    type: Number,
   }
 }, { _id: false });
 

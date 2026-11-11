@@ -7,6 +7,7 @@ import trainRoutes from './modules/trains/train.routes.js';
 import bookingRoutes from './modules/bookings/booking.routes.js';
 import stationRoutes from './modules/stations/station.routes.js';
 import journeyRoutes from './modules/journeys/journey.routes.js';
+import { startInventoryCron } from './workers/inventoryCron.js';
 
 const app = express();
 
@@ -118,5 +119,7 @@ app.use((err, req, res, next) => {
   const statusCode = err.statusCode || 500;
   res.status(statusCode).json({ status: 'error', message: err.message || 'Internal Server Error' });
 });
+
+startInventoryCron();
 
 export default app;

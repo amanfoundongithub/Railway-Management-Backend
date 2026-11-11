@@ -1,4 +1,4 @@
-import { Journey } from './journey.model.js';
+import { Journey } from './journey.model.js'; // Update path as needed
 import { Train } from '../trains/train.model.js';
 
 // @desc    Initialize a train journey for a specific date (populates initial seat inventory)
@@ -22,11 +22,13 @@ export const createJourney = async (req, res, next) => {
     }
 
     // 3. Map the train's static coach classes into live, decrementing seat inventory
+    // Now including the baseFare to lock in the price for this specific journey
     const seatInventory = train.coachClasses.map(coach => ({
       classType: coach.classType,
       totalSeats: coach.totalSeats,
       availableSeats: coach.totalSeats, // Initially, all seats are available
-      waitlistCount: 0
+      waitlistCount: 0,
+      baseFare: coach.baseFare // <-- Copied from static Train rule to live Journey
     }));
 
     // 4. Save the new Journey
