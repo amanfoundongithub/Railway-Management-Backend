@@ -22,7 +22,7 @@ export const searchStations = async (req, res, next) => {
   try {
     const { query } = req.query;
 
-    if (!query || query.length < 2) {
+    if (!query || query.length < 1) {
       return res.status(400).json({ 
         status: 'fail', 
         message: 'Search query must be at least 2 characters long' 
