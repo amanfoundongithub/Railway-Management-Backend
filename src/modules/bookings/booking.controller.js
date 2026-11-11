@@ -3,7 +3,7 @@ import { Train } from '../trains/train.model.js';
 import { Journey } from '../journeys/journey.model.js';
 import mongoose from 'mongoose';
 
-// @desc    Create a new train ticket (Handles Confirmed & Waitlist)
+// @desc    Step 1: Reserve seats and initialize a Pending booking
 export const createBooking = async (req, res, next) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -21,12 +21,10 @@ export const createBooking = async (req, res, next) => {
     const classInventory = journey.seatInventory.find(c => c.classType === coachClass);
     if (!classInventory) throw new Error(`Class ${coachClass} is not available`);
 
-    // Calculate total fare
     const train = await Train.findById(trainId).session(session);
     const trainClassConfig = train.coachClasses.find(c => c.classType === coachClass);
     const totalFare = trainClassConfig.baseFare * passengers.length;
 
-    // Allocate seats or assign waitlist passenger by passenger
     const passengersWithSeats = [];
     
     for (const p of passengers) {
@@ -49,6 +47,9 @@ export const createBooking = async (req, res, next) => {
 
     await journey.save({ session }); 
 
+    // Generate a mock payment intent ID
+    const transactionId = `TXN-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
     const [newBooking] = await Booking.create([{
       user: req.user._id,
       train: trainId,
@@ -57,7 +58,10 @@ export const createBooking = async (req, res, next) => {
       destinationStation,
       coachClass,
       passengers: passengersWithSeats,
-      totalFare
+      totalFare,
+      transactionId,
+      bookingStatus: 'PENDING',
+      paymentStatus: 'PENDING'
     }], { session });
 
     await session.commitTransaction();
@@ -65,7 +69,12 @@ export const createBooking = async (req, res, next) => {
 
     res.status(201).json({
       status: 'success',
-      data: { booking: newBooking }
+      message: 'Seats reserved. Please complete payment to generate PNR.',
+      data: { 
+        bookingId: newBooking._id,
+        transactionId,
+        totalFare
+      }
     });
   } catch (error) {
     await session.abortTransaction();
@@ -201,6 +210,75 @@ export const cancelBooking = async (req, res, next) => {
       status: 'success',
       message: 'Booking cancelled successfully. Seats reallocated.',
       data: { booking }
+    });
+
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    if (error.message) return res.status(400).json({ status: 'fail', message: error.message });
+    next(error);
+  }
+};
+
+// @desc    Step 2: Webhook to verify payment and finalize ticket or release seats
+// @access  Public (In production, this would verify a Razorpay/Stripe signature)
+export const verifyPayment = async (req, res, next) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const { transactionId, paymentStatus } = req.body;
+
+    const booking = await Booking.findOne({ transactionId }).session(session);
+    if (!booking) throw new Error('Invalid transaction ID');
+    if (booking.bookingStatus !== 'PENDING') throw new Error('Transaction already processed');
+
+    if (paymentStatus === 'SUCCESS') {
+      // Payment successful: Generate PNR and finalize
+      booking.pnr = Math.floor(1000000000 + Math.random() * 9000000000).toString();
+      booking.paymentStatus = 'COMPLETED';
+      booking.bookingStatus = 'SUCCESS';
+      await booking.save({ session });
+
+    } else if (paymentStatus === 'FAILED') {
+      // Payment failed: Release seats back to inventory
+      booking.paymentStatus = 'FAILED';
+      booking.bookingStatus = 'FAILED';
+      booking.passengers.forEach(p => p.status = 'CANCELLED');
+      await booking.save({ session });
+
+      const journey = await Journey.findOne({
+        train: booking.train,
+        journeyDate: booking.journeyDate
+      }).session(session);
+
+      if (journey) {
+        const classInventory = journey.seatInventory.find(c => c.classType === booking.coachClass);
+        if (classInventory) {
+          let confirmedFreed = 0;
+          let wlFreed = 0;
+          
+          booking.passengers.forEach(p => {
+            if (p.seatNumber.startsWith('WL')) wlFreed++;
+            else confirmedFreed++;
+          });
+
+          classInventory.availableSeats += confirmedFreed;
+          classInventory.waitlistCount -= wlFreed;
+          await journey.save({ session });
+        }
+      }
+    } else {
+      throw new Error('Invalid payment status payload');
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+
+    res.status(200).json({
+      status: 'success',
+      message: paymentStatus === 'SUCCESS' ? 'Ticket confirmed and PNR generated' : 'Payment failed, seats released',
+      data: { pnr: booking.pnr, bookingStatus: booking.bookingStatus }
     });
 
   } catch (error) {
