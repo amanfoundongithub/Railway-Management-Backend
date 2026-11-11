@@ -6,6 +6,7 @@ import authRoutes from './modules/auth/auth.routes.js';
 import trainRoutes from './modules/trains/train.routes.js';
 import bookingRoutes from './modules/bookings/booking.routes.js';
 import stationRoutes from './modules/stations/station.routes.js';
+import journeyRoutes from './modules/journeys/journey.routes.js';
 
 const app = express();
 
@@ -74,6 +75,7 @@ app.use("/api/auth",authRoutes);
 app.use('/api/trains', trainRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/stations', stationRoutes);
+app.use('/api/journeys', journeyRoutes);
 
 /*
 |--------------------------------------------------------------------------
