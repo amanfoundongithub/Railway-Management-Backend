@@ -22,13 +22,14 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Please provide a mobile number for ticket alerts'],
       unique: true,
+      // Regex for standard 10-digit Indian mobile numbers
       match: [/^[6-9]\d{9}$/, 'Please provide a valid 10-digit mobile number'] 
     },
     password: {
       type: String,
       required: [true, 'Please provide a password'],
       minlength: [8, 'Password must be at least 8 characters long'],
-      select: false, 
+      select: false, // Prevents accidental exposure in API responses
     },
     role: {
       type: String,
@@ -39,38 +40,43 @@ const userSchema = new mongoose.Schema(
       default: USER_ROLES.PASSENGER,
     },
     
+    // --- Security & Account Management ---
     passwordChangedAt: {
       type: Date,
     },
     isActive: {
       type: Boolean,
       default: true,
-      select: false, 
+      select: false, // Internal flag for soft-deletes or banned users
     }
   },
   { 
-    timestamps: true 
+    timestamps: true // Automatically manages createdAt and updatedAt
   }
 );
 
 // --- 1. Password Hashing Hook ---
-userSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) return next();
+userSchema.pre('save', async function () {
+  // Only run this function if password was actually modified
+  if (!this.isModified('password')) return;
+
+  // Hash the password with cost of 12
   this.password = await bcrypt.hash(this.password, 12);
-  next();
 });
 
 // --- 2. Password Changed Timestamp Hook ---
-userSchema.pre('save', function (next) {
-  if (!this.isModified('password') || this.isNew) return next();
+userSchema.pre('save', function () {
+  if (!this.isModified('password') || this.isNew) return;
+
+  // Subtract 1 second to account for slight delays saving to DB vs issuing the JWT
   this.passwordChangedAt = Date.now() - 1000;
-  next();
 });
 
 // --- 3. Filter Out Inactive Users Automatically ---
-userSchema.pre(/^find/, function (next) {
+// This regex targets all 'find' queries (find, findOne, findAndUpdate, etc.)
+userSchema.pre(/^find/, function () {
+  // `this` points to the current query
   this.find({ isActive: { $ne: false } });
-  next();
 });
 
 // --- 4. Instance Method: Verify Password ---

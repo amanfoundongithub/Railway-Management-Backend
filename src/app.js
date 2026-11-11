@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import authRoutes from './modules/auth/auth.routes.js'; 
 
 const app = express();
 
@@ -18,27 +19,27 @@ const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000')
     .map((origin) => origin.trim())
     .filter(Boolean);
 
-app.use(
-    cors({
-        origin(origin, callback) {
-            if (!origin || allowedOrigins.includes(origin)) {
-                return callback(null, true);
-            }
+// app.use(
+//     cors({
+//         origin(origin, callback) {
+//             if (!origin || allowedOrigins.includes(origin)) {
+//                 return callback(null, true);
+//             }
 
-            return callback(
-                new Error('Origin not allowed by CORS policy')
-            );
-        },
-        credentials: true,
-        methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-        allowedHeaders: [
-            'Content-Type',
-            'Authorization',
-            'X-Request-ID',
-        ],
-    })
-);
-
+//             return callback(
+//                 new Error('Origin not allowed by CORS policy')
+//             );
+//         },
+//         credentials: true,
+//         methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+//         allowedHeaders: [
+//             'Content-Type',
+//             'Authorization',
+//             'X-Request-ID',
+//         ],
+//     })
+// );
+app.use(cors());
 /*
 |--------------------------------------------------------------------------
 | Request Parsing
@@ -64,6 +65,9 @@ if (process.env.NODE_ENV === 'development') {
 } else {
     app.use(morgan("combined"));
 }
+
+// Register the routers
+app.use("/api/auth",authRoutes);
 
 /*
 |--------------------------------------------------------------------------
@@ -101,6 +105,10 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-
+app.use((err, req, res, next) => {
+  console.error(`[Error] ${err.message}`);
+  const statusCode = err.statusCode || 500;
+  res.status(statusCode).json({ status: 'error', message: err.message || 'Internal Server Error' });
+});
 
 export default app;
