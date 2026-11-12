@@ -105,3 +105,76 @@ export const searchTrains = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Get live running status of a train (Dynamic Mock)
+// @access  Public
+export const getLiveTrainStatus = async (req, res, next) => {
+  try {
+    const { trainNo, date } = req.query;
+
+    if (!trainNo || !date) {
+      return res.status(400).json({ 
+        status: 'fail', 
+        message: 'Please provide both train number and journey date.' 
+      });
+    }
+
+    const train = await Train.findOne({ trainNumber: trainNo });
+    if (!train) {
+      return res.status(404).json({ 
+        status: 'fail', 
+        message: 'Train not found in the system.' 
+      });
+    }
+
+    // --- DYNAMIC UNPREDICTABLE MOCK LOGIC ---
+    
+    // 1. Randomly pick which station the train is currently at (or heading towards)
+    const currentIndex = Math.floor(Math.random() * train.route.length);
+    
+    // 2. Generate a random current delay between 0 and 120 minutes (2 hours)
+    // 30% chance the train is perfectly on time
+    let currentDelay = Math.random() > 0.7 ? Math.floor(Math.random() * 120) : 0; 
+
+    const mockLiveRoute = train.route.map((station, index) => {
+      let status = 'UPCOMING';
+      if (index < currentIndex) status = 'PASSED';
+      else if (index === currentIndex) status = 'CURRENT';
+
+      let stationDelay = 0;
+
+      if (status === 'PASSED') {
+        // Historical delay: fluctuate it randomly by +/- 15 mins to simulate making up or losing time
+        const fluctuation = Math.floor(Math.random() * 30) - 15;
+        stationDelay = Math.max(0, currentDelay + fluctuation);
+      } else {
+        // Current and Upcoming stations show the current ongoing delay as an estimate
+        stationDelay = currentDelay;
+      }
+
+      return {
+        stationName: station.stationName,
+        stationCode: station.stationCode,
+        arrivalTime: station.arrivalTime,
+        status,
+        delay: stationDelay
+      };
+    });
+
+    const liveData = {
+      name: train.trainName,
+      number: train.trainNumber,
+      startDate: date,
+      totalDelay: currentDelay,
+      route: mockLiveRoute
+    };
+
+    res.status(200).json({
+      status: 'success',
+      data: liveData
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
