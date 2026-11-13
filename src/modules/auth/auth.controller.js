@@ -82,3 +82,28 @@ export const getMe = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Add or remove a passenger from the master list
+// @route   PUT /api/auth/master-list
+// @access  Protected
+export const updateMasterList = async (req, res, next) => {
+  try {
+    const { action, passenger } = req.body; // action: 'add' or 'remove'
+    const user = await User.findById(req.user._id);
+
+    if (action === 'add') {
+      user.masterList.push(passenger);
+    } else if (action === 'remove') {
+      user.masterList = user.masterList.filter(p => p._id.toString() !== passenger._id);
+    }
+
+    await user.save();
+
+    res.status(200).json({
+      status: 'success',
+      data: { masterList: user.masterList }
+    });
+  } catch (error) {
+    next(error);
+  }
+};

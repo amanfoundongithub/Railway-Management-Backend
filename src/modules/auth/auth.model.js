@@ -48,7 +48,15 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
       select: false, // Internal flag for soft-deletes or banned users
-    }
+    },
+
+    masterList: [
+  {
+    name: { type: String, required: true },
+    age: { type: Number, required: true },
+    gender: { type: String, enum: ['M', 'F', 'T'], required: true },
+  }
+]
   },
   { 
     timestamps: true // Automatically manages createdAt and updatedAt
