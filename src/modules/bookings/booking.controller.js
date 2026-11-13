@@ -125,40 +125,64 @@ export const getBookingByPNR = async (req, res, next) => {
   }
 };
 
-// @desc    Cancel a booking and auto-upgrade waitlisted passengers
+// @desc    Cancel specific passengers (or full booking) and auto-upgrade waitlisted passengers
 export const cancelBooking = async (req, res, next) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
     const { id } = req.params;
+    const { passengerIds } = req.body; // Expecting ['pax-0', 'pax-2'] or [0, 2]
+
+    if (!Array.isArray(passengerIds) || passengerIds.length === 0) {
+      throw new Error('No passengers selected for cancellation');
+    }
+
     const booking = await Booking.findById(id).session(session);
 
     if (!booking) throw new Error('Booking not found');
     if (booking.user.toString() !== req.user._id.toString() && req.user.role !== 'ADMIN') {
       throw new Error('You do not have permission to cancel this booking');
     }
-    if (booking.bookingStatus === 'CANCELLED') throw new Error('This booking is already cancelled');
+    if (booking.bookingStatus === 'CANCELLED') throw new Error('This booking is already fully cancelled');
     if (new Date(booking.journeyDate) < new Date()) throw new Error('Cannot cancel a past journey');
 
-    // Track what is being cancelled to know how many seats to give to the waitlist
     let confirmedCancelled = 0;
     let wlCancelled = 0;
     const freedSeats = [];
 
-    booking.passengers.forEach(p => {
+    // 1. Parse the incoming IDs to get the array indices
+    const indicesToCancel = passengerIds.map(id => {
+      if (typeof id === 'string' && id.startsWith('pax-')) {
+        return parseInt(id.split('-')[1], 10);
+      }
+      return parseInt(id, 10);
+    });
+
+    // 2. Iterate only over the selected passenger indices
+    indicesToCancel.forEach(index => {
+      const p = booking.passengers[index];
+      if (!p) throw new Error(`Passenger at index ${index} not found`);
+      if (p.status === 'CANCELLED') throw new Error(`Passenger ${p.name} is already cancelled`);
+
       if (p.status === 'CONFIRMED') {
         confirmedCancelled++;
         freedSeats.push(p.seatNumber);
       } else if (p.status === 'WAITLISTED') {
         wlCancelled++;
       }
-      p.status = 'CANCELLED';
+      p.status = 'CANCELLED'; // Mark only this passenger as cancelled
     });
     
-    booking.bookingStatus = 'CANCELLED';
+    // 3. Check if all passengers in the booking are now cancelled
+    const allCancelled = booking.passengers.every(p => p.status === 'CANCELLED');
+    if (allCancelled) {
+      booking.bookingStatus = 'CANCELLED';
+    }
+
     await booking.save({ session });
 
+    // 4. Handle Seat Reallocation & Waitlist Upgrades
     const journey = await Journey.findOne({
       train: booking.train,
       journeyDate: booking.journeyDate
@@ -172,7 +196,6 @@ export const cancelBooking = async (req, res, next) => {
 
         // If confirmed seats were freed, auto-upgrade the waitlist
         if (confirmedCancelled > 0) {
-          // Find active bookings with waitlisted passengers, oldest first
           const wlBookings = await Booking.find({
             train: booking.train,
             journeyDate: booking.journeyDate,
@@ -208,7 +231,7 @@ export const cancelBooking = async (req, res, next) => {
 
     res.status(200).json({
       status: 'success',
-      message: 'Booking cancelled successfully. Seats reallocated.',
+      message: allCancelled ? 'Booking fully cancelled.' : 'Selected passengers cancelled successfully.',
       data: { booking }
     });
 

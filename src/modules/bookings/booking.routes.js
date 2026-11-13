@@ -16,7 +16,7 @@ router.post('/', validateRequest(createBookingSchema), createBooking);
 router.get('/my-bookings', getUserBookings);
 
 // Cancel a booking route
-router.patch('/:id/cancel', cancelBooking); // <-- Add this line
+router.patch('/cancel/:id', cancelBooking); // <-- Add this line
 router.post('/payment-webhook', verifyPayment);
 
 export default router;
