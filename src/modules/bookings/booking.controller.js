@@ -311,3 +311,51 @@ export const verifyPayment = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Add a food order to an existing booking via PNR
+// @route   POST /api/bookings/:pnr/meals
+// @access  Protected (or Public if you want anyone with a PNR to order)
+export const addMealToBooking = async (req, res, next) => {
+  try {
+    const { pnr } = req.params;
+    const { restaurantName, deliveryStation, items, totalAmount } = req.body;
+
+    // Find the booking by PNR
+    const booking = await Booking.findOne({ pnr });
+
+    if (!booking) {
+      return res.status(404).json({ 
+        status: 'fail', 
+        message: 'No booking found with this PNR number.' 
+      });
+    }
+
+    // Check if the booking is already cancelled or past
+    if (booking.bookingStatus === 'CANCELLED') {
+      return res.status(400).json({ 
+        status: 'fail', 
+        message: 'Cannot order food for a cancelled ticket.' 
+      });
+    }
+
+    // Create the meal object
+    const newMeal = {
+      restaurantName,
+      deliveryStation,
+      items,
+      totalAmount
+    };
+
+    // Push into the booking document and save
+    booking.meals.push(newMeal);
+    await booking.save();
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Food order confirmed and attached to PNR.',
+      data: { booking }
+    });
+  } catch (error) {
+    next(error);
+  }
+};

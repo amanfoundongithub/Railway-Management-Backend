@@ -1,5 +1,5 @@
 import express from 'express';
-import { createBooking, getUserBookings, getBookingByPNR, cancelBooking, verifyPayment } from './booking.controller.js'; // <-- Import cancelBooking
+import { createBooking, getUserBookings, getBookingByPNR, cancelBooking, verifyPayment, addMealToBooking } from './booking.controller.js'; // <-- Import cancelBooking
 import { protect } from '../../middlewares/authMiddleware.js';
 import { validateRequest } from '../../middlewares/validateRequest.js';
 import { createBookingSchema } from './booking.schema.js';
@@ -18,5 +18,7 @@ router.get('/my-bookings', getUserBookings);
 // Cancel a booking route
 router.patch('/cancel/:id', cancelBooking); // <-- Add this line
 router.post('/payment-webhook', verifyPayment);
+
+router.post('/:pnr/meals', protect, addMealToBooking);
 
 export default router;

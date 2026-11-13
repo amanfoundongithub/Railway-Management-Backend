@@ -63,6 +63,27 @@ const bookingSchema = new mongoose.Schema({
     required: true,
   },
   passengers: [passengerSchema],
+  // Add this inside your BookingSchema definition
+meals: [
+  {
+    restaurantName: { type: String, required: true },
+    deliveryStation: { type: String, required: true }, // E.g., 'Nagpur Junction'
+    items: [
+      {
+        name: { type: String, required: true },
+        quantity: { type: Number, required: true },
+        price: { type: Number, required: true }
+      }
+    ],
+    totalAmount: { type: Number, required: true },
+    orderStatus: { 
+      type: String, 
+      enum: ['CONFIRMED', 'DELIVERED', 'CANCELLED'], 
+      default: 'CONFIRMED' 
+    },
+    orderedAt: { type: Date, default: Date.now }
+  }
+],
   totalFare: {
     type: Number,
     required: true,
