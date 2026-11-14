@@ -1,5 +1,5 @@
 import express from 'express';
-import { getDashboardStats, getTrainInventory } from './admin.controller.js';
+import { getDashboardStats, getTrainInventory, toggleTrainStatus } from './admin.controller.js';
 import { protect, restrictTo } from '../../middlewares/authMiddleware.js';
 import { USER_ROLES } from '../../utils/constants.js'; 
 
@@ -10,5 +10,6 @@ router.use(restrictTo(USER_ROLES.ADMIN));
 
 router.get('/dashboard-stats', getDashboardStats);
 router.get('/inventory', getTrainInventory);
+router.patch('/trains/status/:id', toggleTrainStatus);
 
 export default router;

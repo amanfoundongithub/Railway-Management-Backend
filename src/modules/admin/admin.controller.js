@@ -41,38 +41,76 @@ export const getDashboardStats = async (req, res, next) => {
   }
 };
 
-// @desc    Get detailed inventory and status of all trains
+// @desc    Get detailed inventory and status of all trains (Paginated)
 // @route   GET /api/admin/inventory
 // @access  Private (Admin Only)
 export const getTrainInventory = async (req, res, next) => {
   try {
-    // Fetch all trains, sorting by newest first
-    const trains = await Train.find().sort({ createdAt: -1 });
+    // 1. Parse pagination & search queries
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 5;
+    const search = req.query.search || '';
+    const skip = (page - 1) * limit;
 
-    // For a production app, you would join this with the `Journey` model 
-    // to get live occupancy for today. For this dashboard overview, 
-    // we'll map the basic details and calculate total capacity.
+    // 2. Build the MongoDB filter
+    const query = {};
+    if (search) {
+      query.$or = [
+        { trainNumber: { $regex: search, $options: 'i' } },
+        { trainName: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    // 3. Execute parallel DB calls for data and total count
+    const [trains, totalTrains] = await Promise.all([
+      Train.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Train.countDocuments(query)
+    ]);
+
     const inventory = trains.map(train => {
-      // Calculate total physical capacity of the train
       const totalCapacity = train.coachClasses.reduce((sum, coach) => sum + coach.totalSeats, 0);
-
       return {
         _id: train._id,
         trainNumber: train.trainNumber,
         trainName: train.trainName,
         totalCapacity,
         isActive: train.isActive,
-        // Mocking current occupancy for the dashboard UI (randomized for display)
-        // You can replace this with a real aggregation against the Journey collection later
-        currentOccupancy: Math.floor(Math.random() * totalCapacity), 
+        currentOccupancy: Math.floor(Math.random() * totalCapacity), // Mocked for now
         runningDays: train.runningDays
       };
     });
 
     res.status(200).json({
       status: 'success',
-      results: inventory.length,
+      total: totalTrains, // Need this for frontend pagination math
       data: { inventory }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Soft delete or restore a train (Toggle Active Status)
+// @route   PATCH /api/admin/trains/:id/status
+// @access  Private (Admin Only)
+export const toggleTrainStatus = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { isActive } = req.body;
+    
+    const train = await Train.findByIdAndUpdate(
+      id, 
+      { isActive }, 
+      { new: true }
+    );
+
+    if (!train) {
+      return res.status(404).json({ message: 'Train not found' });
+    }
+
+    res.status(200).json({
+      status: 'success',
+      data: train
     });
   } catch (error) {
     next(error);
