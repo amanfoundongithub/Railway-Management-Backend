@@ -116,3 +116,37 @@ export const toggleTrainStatus = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Bulk toggle active status for multiple trains
+// @route   PATCH /api/admin/trains/bulk-status
+// @access  Private (Admin Only)
+export const bulkToggleTrainStatus = async (req, res, next) => {
+  try {
+    const { trainIds } = req.body;
+
+    if (!Array.isArray(trainIds) || trainIds.length === 0) {
+      return res.status(400).json({ message: 'No train IDs provided' });
+    }
+
+    // Use MongoDB BulkWrite to fetch and invert the status of each selected train
+    const trains = await Train.find({ _id: { $in: trainIds } });
+    
+    const bulkOps = trains.map(train => ({
+      updateOne: {
+        filter: { _id: train._id },
+        update: { $set: { isActive: !train.isActive } }
+      }
+    }));
+
+    if (bulkOps.length > 0) {
+      await Train.bulkWrite(bulkOps);
+    }
+
+    res.status(200).json({
+      status: 'success',
+      message: `${bulkOps.length} trains updated successfully`
+    });
+  } catch (error) {
+    next(error);
+  }
+};
