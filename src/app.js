@@ -8,7 +8,7 @@ import bookingRoutes from './modules/bookings/booking.routes.js';
 import stationRoutes from './modules/stations/station.routes.js';
 import journeyRoutes from './modules/journeys/journey.routes.js';
 import adminRoutes from './modules/admin/admin.routes.js';
-
+import cateringRoutes from './modules/catering/catering.routes.js';
 import { startInventoryCron } from './workers/inventoryCron.js';
 
 const app = express();
@@ -80,6 +80,7 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/stations', stationRoutes);
 app.use('/api/journeys', journeyRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/catering', cateringRoutes);
 
 /*
 |--------------------------------------------------------------------------

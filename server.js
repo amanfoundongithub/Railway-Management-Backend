@@ -1,9 +1,9 @@
 import dotenv from 'dotenv/config';
-import pino from 'pino';
 
 import { Logger } from './utils/logger.js';
 import { connectDB, disconnectDB } from './src/config/db.js';
 import app from './src/app.js';
+import './src/workers/cateringWorker.js';
 
 const logger = new Logger("Server");
 
@@ -21,6 +21,7 @@ const startServer = async () => {
                 host : HOST, 
                 baseUrl : `http://${HOST}:${PORT}`
             });
+            logger.info("BullMQ consumer activated.");
         });
         const shutdown = async (signal) => {
             logger.info(`[SERVER_SHUTDOWN] Received stopping signal from keyboard stroke: ${signal}`, {
