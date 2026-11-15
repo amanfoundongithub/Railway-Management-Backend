@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createJourney, checkAvailability } from './journey.controller.js';
 import { protect, restrictTo } from '../../middlewares/authMiddleware.js';
 import { validateRequest } from '../../middlewares/validateRequest.js';
-import { USER_ROLES } from '../../utils/constants.js';
+import { USER_ROLES } from '../../../utils/constants.js';
 import { createJourneySchema } from "./journey.schema.js";
 
 const router = express.Router();

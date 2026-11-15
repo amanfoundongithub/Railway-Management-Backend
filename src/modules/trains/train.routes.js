@@ -8,7 +8,7 @@ import {
 import { protect, restrictTo } from '../../middlewares/authMiddleware.js';
 import { validateRequest } from '../../middlewares/validateRequest.js';
 import { createTrainSchema } from './train.schema.js';
-import { USER_ROLES } from '../../utils/constants.js';
+import { USER_ROLES } from '../../../utils/constants.js';
 
 const router = express.Router();
 

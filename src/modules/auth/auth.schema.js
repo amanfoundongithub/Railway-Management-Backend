@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ROLE_ARRAY } from '../../utils/constants.js';
+import { ROLE_ARRAY } from '../../../utils/constants.js';
 
 export const registerSchema = z.object({
   body: z.object({

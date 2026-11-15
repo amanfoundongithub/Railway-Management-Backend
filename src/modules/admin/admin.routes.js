@@ -1,7 +1,7 @@
 import express from 'express';
 import { getDashboardStats, getTrainInventory, toggleTrainStatus, bulkToggleTrainStatus } from './admin.controller.js';
 import { protect, restrictTo } from '../../middlewares/authMiddleware.js';
-import { USER_ROLES } from '../../utils/constants.js'; 
+import { USER_ROLES } from '../../../utils/constants.js'; 
 
 const router = express.Router();
 
