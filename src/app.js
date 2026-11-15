@@ -26,27 +26,27 @@ const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000')
     .map((origin) => origin.trim())
     .filter(Boolean);
 
-// app.use(
-//     cors({
-//         origin(origin, callback) {
-//             if (!origin || allowedOrigins.includes(origin)) {
-//                 return callback(null, true);
-//             }
+app.use(
+    cors({
+        origin(origin, callback) {
+            if (!origin || allowedOrigins.includes(origin)) {
+                return callback(null, true);
+            }
 
-//             return callback(
-//                 new Error('Origin not allowed by CORS policy')
-//             );
-//         },
-//         credentials: true,
-//         methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-//         allowedHeaders: [
-//             'Content-Type',
-//             'Authorization',
-//             'X-Request-ID',
-//         ],
-//     })
-// );
-app.use(cors());
+            return callback(
+                new Error('Origin not allowed by CORS policy')
+            );
+        },
+        credentials: true,
+        methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+        allowedHeaders: [
+            'Content-Type',
+            'Authorization',
+            'X-Request-ID',
+        ],
+    })
+);
+
 /*
 |--------------------------------------------------------------------------
 | Request Parsing
