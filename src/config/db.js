@@ -1,4 +1,7 @@
 import mongoose from 'mongoose';
+import { Logger } from '../../utils/logger.js';
+
+const logger = new Logger("MongoDB_Connection")
 
 const DB_CONFIGURATION_OPTION = {
 
@@ -29,17 +32,6 @@ const DB_CONFIGURATION_OPTION = {
 
 let connectionPromise = null;
 let shutdownStarted = false;
-
-const logger = {
-    info: (message, meta = {}) =>
-        console.info(`[MONGODB_CONNECTION] ${message}`, meta),
-
-    warn: (message, meta = {}) =>
-        console.warn(`[MONGODB_CONNECTION] ${message}`, meta),
-
-    error: (message, meta = {}) =>
-        console.error(`[MONGODB_CONNECTION] ${message}`, meta),
-};
 
 
 export const connectDB = async () => {
@@ -73,9 +65,7 @@ export const connectDB = async () => {
         });
         return mongoose.connection;
     } catch(error) {
-        logger.error("Initial connection failed.", {
-            message : error.message 
-        });
+        logger.error("Initial connection failed.", error);
         throw error;
     } finally {
         connectionPromise = null;
@@ -96,9 +86,7 @@ mongoose.connection.on("reconnected", () => {
 });
 
 mongoose.connection.on("error", (error) => {
-    logger.error("MongoDB runtime error", {
-        message: error.message
-    });
+    logger.error("MongoDB runtime error", error);
 });
 
 export const disconnectDB = async (signal = "MANUAL") => {
@@ -116,9 +104,7 @@ export const disconnectDB = async (signal = "MANUAL") => {
         await mongoose.disconnect();
         logger.info("MongoDB disconnected gracefully.");
     } catch(error) {
-        logger.error("MongoDB shutdown failed", {
-            message : error.message
-        });
+        logger.error("MongoDB shutdown failed", error);
         throw error;
     }
 };
