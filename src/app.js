@@ -9,6 +9,8 @@ import stationRoutes from './modules/stations/station.routes.js';
 import journeyRoutes from './modules/journeys/journey.routes.js';
 import adminRoutes from './modules/admin/admin.routes.js';
 import cateringRoutes from './modules/catering/catering.routes.js';
+import cabRoutes from './modules/cabs/cab.routes.js';
+import hotelRoutes from './modules/hotels/hotel.routes.js';
 import { startInventoryCron } from './workers/inventoryCron.js';
 
 const app = express();
@@ -81,6 +83,8 @@ app.use('/api/stations', stationRoutes);
 app.use('/api/journeys', journeyRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/catering', cateringRoutes);
+app.use('/api/cabs', cabRoutes);
+app.use('/api/hotels', hotelRoutes);
 
 /*
 |--------------------------------------------------------------------------
