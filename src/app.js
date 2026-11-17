@@ -11,6 +11,8 @@ import adminRoutes from './modules/admin/admin.routes.js';
 import cateringRoutes from './modules/catering/catering.routes.js';
 import cabRoutes from './modules/cabs/cab.routes.js';
 import hotelRoutes from './modules/hotels/hotel.routes.js';
+import aiConciergeRoutes from './modules/ai-concierge/ai.routes.js';
+
 import { startInventoryCron } from './workers/inventoryCron.js';
 
 const app = express();
@@ -85,6 +87,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/catering', cateringRoutes);
 app.use('/api/cabs', cabRoutes);
 app.use('/api/hotels', hotelRoutes);
+app.use('/api/ai-concierge', aiConciergeRoutes);
 
 /*
 |--------------------------------------------------------------------------
