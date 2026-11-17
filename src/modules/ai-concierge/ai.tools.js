@@ -1,9 +1,10 @@
 import { Type } from '@google/genai';
 import { Booking } from '../bookings/booking.model.js';
-import { Train } from '../trains/train.model.js';
 import { Station } from '../stations/station.model.js';
 import { CabVendor, CabBooking } from '../cabs/cab.model.js';
 import { StationHotel, HotelBooking } from '../hotels/hotel.model.js';
+import { CateringOrder } from '../catering/catering.model.js';
+import { CateringVendor } from '../catering/catering.vendor.model.js';
 
 // Haversine helper with 1.3x urban road factor
 const calculateDistanceKm = (lat1, lon1, lat2, lon2) => {
@@ -83,6 +84,43 @@ export const conciergeToolDeclarations = [
       },
       required: ['bookingId', 'hotelId', 'roomsCount', 'nights']
     }
+  },
+  {
+    name: 'get_station_food_vendors',
+    description: 'Fetches available E-Catering restaurants, food vendors, and their menus at a given railway station code.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        stationCode: { type: Type.STRING, description: 'Station code, e.g. NDLS, CNB, BPL, SC, HWH' }
+      },
+      required: ['stationCode']
+    }
+  },
+  {
+    name: 'book_station_food',
+    description: 'Places a confirmed E-Catering food order to be delivered directly to the passenger berth at the specified station.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        bookingId: { type: Type.STRING, description: 'MongoDB _id of the PNR Booking' },
+        stationCode: { type: Type.STRING, description: 'Station code where meal will be delivered (e.g. CNB, NDLS)' },
+        vendorId: { type: Type.STRING, description: 'MongoDB _id of the CateringVendor' },
+        items: {
+          type: Type.ARRAY,
+          description: 'List of menu items to order with quantities and unit prices',
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              name: { type: Type.STRING, description: 'Exact menu item name' },
+              price: { type: Type.NUMBER, description: 'Price per unit in INR' },
+              quantity: { type: Type.NUMBER, description: 'Quantity of this item (minimum 1)' }
+            },
+            required: ['name', 'price', 'quantity']
+          }
+        }
+      },
+      required: ['bookingId', 'stationCode', 'vendorId', 'items']
+    }
   }
 ];
 
@@ -93,7 +131,7 @@ export const executeConciergeTool = async (name, args) => {
       const booking = await Booking.findOne({ pnr: args.pnr })
         .populate('train')
         .lean();
-      
+
       if (!booking) {
         return { error: `No booking found for PNR ${args.pnr}` };
       }
@@ -101,7 +139,7 @@ export const executeConciergeTool = async (name, args) => {
       const train = booking.train;
       return {
         bookingId: booking._id.toString(),
-        pnrNumber: booking.pnrNumber,
+        pnrNumber: booking.pnr || booking.pnrNumber,
         bookingStatus: booking.bookingStatus,
         journeyDate: booking.journeyDate,
         passengers: booking.passengers,
@@ -134,7 +172,7 @@ export const executeConciergeTool = async (name, args) => {
       }
 
       const stationCoords = station?.coordinates || { lat: 28.6415, lng: 77.2208 };
-      let distanceKm = 10; // Fallback 10 km
+      let distanceKm = 10;
       let resolvedAddress = args.dropLocationQuery;
 
       try {
@@ -151,7 +189,7 @@ export const executeConciergeTool = async (name, args) => {
           resolvedAddress = geoData[0].display_name.split(',').slice(0, 3).join(', ');
         }
       } catch {
-        // Fallback to default 10km if Nominatim is unreachable
+        // Fallback to default 10km
       }
 
       const options = vendors.map((v) => ({
@@ -252,6 +290,74 @@ export const executeConciergeTool = async (name, args) => {
         roomsCount,
         nights,
         totalAmount
+      };
+    }
+
+    case 'get_station_food_vendors': {
+      const code = args.stationCode.toUpperCase();
+      const vendors = await CateringVendor.find({ stationCode: code }).lean();
+
+      if (!vendors.length) {
+        return { error: `No E-Catering food vendors found at station ${code}` };
+      }
+
+      return {
+        stationCode: code,
+        vendors: vendors.map((v) => ({
+          vendorId: v._id.toString(),
+          name: v.name,
+          tags: v.tags,
+          rating: v.rating,
+          menu: (v.menu || []).map((item) => ({
+            itemId: item._id?.toString(),
+            name: item.name,
+            desc: item.desc,
+            price: item.price,
+            isVeg: item.isVeg
+          }))
+        }))
+      };
+    }
+
+    case 'book_station_food': {
+      const vendor = await CateringVendor.findById(args.vendorId).lean();
+      if (!vendor) {
+        return { error: 'Selected catering vendor not found.' };
+      }
+
+      const normalizedItems = (args.items || []).map((item) => ({
+        name: item.name,
+        price: Number(item.price),
+        quantity: Math.max(1, Number(item.quantity) || 1)
+      }));
+
+      const totalAmount = normalizedItems.reduce(
+        (sum, item) => sum + item.price * item.quantity,
+        0
+      );
+
+      // Default delivery ETA to 45 minutes from order creation
+      const deliveryEta = new Date(Date.now() + 45 * 60 * 1000);
+
+      const foodOrder = await CateringOrder.create({
+        bookingId: args.bookingId,
+        stationCode: args.stationCode.toUpperCase(),
+        vendorId: vendor._id.toString(),
+        restaurantName: vendor.name,
+        items: normalizedItems,
+        totalAmount,
+        deliveryEta,
+        status: 'PLACED'
+      });
+
+      return {
+        status: foodOrder.status,
+        cateringOrderId: foodOrder._id.toString(),
+        restaurantName: foodOrder.restaurantName,
+        stationCode: foodOrder.stationCode,
+        items: normalizedItems,
+        totalAmount: foodOrder.totalAmount,
+        deliveryEta: foodOrder.deliveryEta
       };
     }
 
