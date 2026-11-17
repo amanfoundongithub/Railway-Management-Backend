@@ -13,22 +13,47 @@ Rules:
 - Never invent station codes, vendor IDs, or fares—always call the tools first.
 - Keep responses concise, structured, and easy to read with bullet points and ₹ symbols.`;
 
+const parseApiError = (error) => {
+  const message = typeof error?.message === 'string' ? error.message : '';
+  const jsonStart = message.indexOf('{');
+  const jsonEnd = message.lastIndexOf('}');
+
+  if (jsonStart === -1 || jsonEnd <= jsonStart) return null;
+
+  try {
+    return JSON.parse(message.slice(jsonStart, jsonEnd + 1)).error ?? null;
+  } catch {
+    return null;
+  }
+};
+
 export const chatWithConcierge = async (req, res, next) => {
   try {
+
+    // Get the messages and PNR of the request
     const { messages, pnr } = req.body;
 
+    // If API KEY not found or MODEL not found
     if (!process.env.GEMINI_API_KEY) {
       return res.status(500).json({
         status: 'fail',
         message: 'GEMINI_API_KEY is missing in backend environment variables.'
       });
     }
+    if (!process.env.GEMINI_MODEL) {
+      return res.status(500).json({
+        status: 'fail',
+        message: 'GEMINI_MODEL is missing in backend environment variables.'
+      });
+    }
 
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY,
-      apiVersion : 'v1beta'
-     });
+    // AI Model from Google 
+    const ai = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+      apiVersion: 'v1beta'
+    });
 
-    // Format conversation history into Gemini contents structure
+    // Message history
     const contents = (messages || []).map((msg) => ({
       role: msg.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: msg.content }]
@@ -44,7 +69,7 @@ export const chatWithConcierge = async (req, res, next) => {
     const maxLoops = 5;
 
     let response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: process.env.GEMINI_MODEL,
       contents,
       config: {
         systemInstruction: systemPrompt,
@@ -53,7 +78,6 @@ export const chatWithConcierge = async (req, res, next) => {
       }
     });
 
-    // Multi-step Agentic Tool Execution Loop
     while (response.functionCalls && response.functionCalls.length > 0 && loopCount < maxLoops) {
       loopCount += 1;
       const modelParts = response.candidates?.[0]?.content?.parts || [];
@@ -89,11 +113,25 @@ export const chatWithConcierge = async (req, res, next) => {
     res.status(200).json({
       status: 'success',
       data: {
-        reply: response.text || 'I processed your request.',
+        reply: response.text,
         executedActions
       }
     });
+
   } catch (error) {
+    const apiError = parseApiError(error);
+    if (Number.isInteger(apiError?.code) && apiError.code >= 400 && apiError.code < 600) {
+      const retryDelay = apiError.details?.find((detail) =>
+        detail?.['@type']?.endsWith('/RetryInfo')
+      )?.retryDelay;
+
+      return res.status(apiError.code).json({
+        status: 'fail',
+        message: apiError.message || 'AI service request failed.',
+        ...(retryDelay && { retryDelay })
+      });
+    }
+
     next(error);
   }
 };
