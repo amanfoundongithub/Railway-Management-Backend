@@ -68,6 +68,8 @@ export const chatWithConcierge = async (req, res, next) => {
     let loopCount = 0;
     const maxLoops = 5;
 
+    console.log(process.env.GEMINI_MODEL)
+
     let response = await ai.models.generateContent({
       model: process.env.GEMINI_MODEL,
       contents,
@@ -100,7 +102,7 @@ export const chatWithConcierge = async (req, res, next) => {
       contents.push({ role: 'user', parts: toolResponseParts });
 
       response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: process.env.GEMINI_MODEL,
         contents,
         config: {
           systemInstruction: systemPrompt,
