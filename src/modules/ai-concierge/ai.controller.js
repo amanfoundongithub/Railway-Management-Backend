@@ -110,7 +110,6 @@ export const chatWithConcierge = async (req, res, next) => {
         }
       });
 
-      console.log(loopCount, response);
     }
 
     res.status(200).json({
