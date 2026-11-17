@@ -68,7 +68,6 @@ export const chatWithConcierge = async (req, res, next) => {
     let loopCount = 0;
     const maxLoops = 5;
 
-    console.log(process.env.GEMINI_MODEL)
 
     let response = await ai.models.generateContent({
       model: process.env.GEMINI_MODEL,
@@ -110,6 +109,8 @@ export const chatWithConcierge = async (req, res, next) => {
           temperature: 0.2
         }
       });
+
+      console.log(loopCount, response);
     }
 
     res.status(200).json({
