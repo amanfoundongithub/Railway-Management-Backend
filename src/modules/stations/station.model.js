@@ -32,6 +32,20 @@ const stationSchema = new mongoose.Schema({
     min: 1,
     default: 1,
   },
+  coordinates: {
+    lat: {
+      type: Number,
+      required: [true, 'Latitude is required'],
+      min: -90,
+      max: 90,
+    },
+    lng: {
+      type: Number,
+      required: [true, 'Longitude is required'],
+      min: -180,
+      max: 180,
+    },
+  },
   isActive: {
     type: Boolean,
     default: true,

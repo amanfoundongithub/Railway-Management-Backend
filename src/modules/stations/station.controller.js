@@ -47,3 +47,39 @@ export const searchStations = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Update coordinates of an existing station
+// @access  Protected (Admin only)
+export const updateStationCoordinates = async (req, res, next) => {
+  try {
+    const { stationCode } = req.params;
+    const { lat, lng } = req.body;
+
+    if (lat === undefined || lng === undefined) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Both lat and lng are required'
+      });
+    }
+
+    const station = await Station.findOneAndUpdate(
+      { stationCode: stationCode.toUpperCase() },
+      { $set: { coordinates: { lat: Number(lat), lng: Number(lng) } } },
+      { new: true, runValidators: true }
+    );
+
+    if (!station) {
+      return res.status(404).json({
+        status: 'fail',
+        message: `Station with code ${stationCode} not found`
+      });
+    }
+
+    res.status(200).json({
+      status: 'success',
+      data: { station }
+    });
+  } catch (error) {
+    next(error);
+  }
+};

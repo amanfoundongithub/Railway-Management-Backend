@@ -1,5 +1,5 @@
 import express from 'express';
-import { createStation, searchStations } from './station.controller.js';
+import { createStation, searchStations, updateStationCoordinates } from './station.controller.js';
 import { protect, restrictTo } from '../../middlewares/authMiddleware.js';
 import { validateRequest } from '../../middlewares/validateRequest.js';
 import { createStationSchema } from './station.schema.js';
@@ -16,5 +16,11 @@ router.post(
   validateRequest(createStationSchema), 
   createStation
 );
+
+router.patch(
+  '/:stationCode/coordinates', 
+  protect, 
+  restrictTo(USER_ROLES.ADMIN),
+  updateStationCoordinates);
 
 export default router;
