@@ -25,5 +25,7 @@ const cabBookingSchema = new mongoose.Schema({
   status: { type: String, enum: ['CONFIRMED', 'DISPATCHED', 'COMPLETED', 'CANCELLED'], default: 'CONFIRMED' }
 }, { timestamps: true });
 
+cabBookingSchema.index({ createdAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 });
+
 export const CabVendor = mongoose.model('CabVendor', cabVendorSchema);
 export const CabBooking = mongoose.model('CabBooking', cabBookingSchema);

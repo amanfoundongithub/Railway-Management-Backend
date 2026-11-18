@@ -104,6 +104,8 @@ meals: [
   },
 }, { timestamps: true });
 
+bookingSchema.index({ createdAt: 1 }, { expireAfterSeconds: 365 * 24 * 60 * 60 });
+
 // Pre-save hook to generate a random 10-digit PNR if it doesn't exist
 // Mongoose 8 compatible (no 'next')
 bookingSchema.pre('save', async function () {

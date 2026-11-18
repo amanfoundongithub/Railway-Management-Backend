@@ -25,4 +25,6 @@ const cateringOrderSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
+cateringOrderSchema.index({ createdAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 });
+
 export const CateringOrder = mongoose.model('CateringOrder', cateringOrderSchema);

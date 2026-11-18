@@ -21,5 +21,7 @@ const hotelBookingSchema = new mongoose.Schema({
   status: { type: String, enum: ['CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT', 'CANCELLED'], default: 'CONFIRMED' }
 }, { timestamps: true });
 
+hotelBookingSchema.index({ createdAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 });
+
 export const StationHotel = mongoose.model('StationHotel', hotelSchema);
 export const HotelBooking = mongoose.model('HotelBooking', hotelBookingSchema);
