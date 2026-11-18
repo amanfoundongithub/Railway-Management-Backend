@@ -1,5 +1,6 @@
 import { CabVendor, CabBooking } from './cab.model.js';
 import { Train } from '../trains/train.model.js';
+import { Station } from '../stations/station.model.js';
 import { Booking } from '../bookings/booking.model.js';
 import { sendCabBookingConfirmation } from '../../services/email.service.js';
 
@@ -14,8 +15,17 @@ export const getStationsWithCabs = async (req, res, next) => {
       return res.status(404).json({ message: 'Train or train route not found.' });
     }
 
-    // 2. Fetch all cab vendors from DB
-    const allCabVendors = await CabVendor.find().lean();
+    // 2. Fetch station coordinates and cab vendors from DB
+    const stationCodes = train.route.map((stop) => stop.stationCode);
+    const [allCabVendors, stations] = await Promise.all([
+      CabVendor.find().lean(),
+      Station.find({ stationCode: { $in: stationCodes } })
+        .select('stationCode coordinates')
+        .lean()
+    ]);
+    const coordinatesByStation = new Map(
+      stations.map((station) => [station.stationCode, station.coordinates])
+    );
     
     // 3. Group cab vendors by stationCode for quick O(1) lookups
     const cabsByStation = allCabVendors.reduce((acc, vendor) => {
@@ -37,6 +47,7 @@ export const getStationsWithCabs = async (req, res, next) => {
       return {
         code: stop.stationCode,
         name: stop.stationName,
+        coordinates: coordinatesByStation.get(stop.stationCode),
         status: stop.status || 'PENDING',
         time: stop.arrivalTime || stop.time,
         canBookCab: hasCabs && stop.status !== 'DEPARTED',
