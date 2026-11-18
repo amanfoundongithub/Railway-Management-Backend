@@ -129,6 +129,9 @@ describe('Train Model - Rigorous Unit Tests', () => {
     });
 
     it('3. should throw a MongoDB duplicate key error if trainNumber is not unique', async () => {
+      // FIX: Force Mongoose to finish building the unique index before we test!
+      await Train.init(); 
+
       // Save the first train successfully
       await Train.create(validTrainPayload);
 
@@ -145,7 +148,6 @@ describe('Train Model - Rigorous Unit Tests', () => {
 
       // Assert that Mongoose threw an error
       expect(error).toBeDefined();
-      // 11000 is the standard MongoDB error code for a unique index violation
       expect(error.code).toBe(11000); 
       expect(error.message).toContain('trainNumber_1 dup key');
     });
