@@ -1,5 +1,7 @@
 import { StationHotel, HotelBooking } from './hotel.model.js';
 import { Train } from '../trains/train.model.js';
+import { Booking } from '../bookings/booking.model.js';
+import { sendHotelBookingConfirmation } from '../../services/email.service.js';
 
 export const getStationsWithHotels = async (req, res, next) => {
   try {
@@ -52,6 +54,11 @@ export const bookHotel = async (req, res, next) => {
   try {
     const { bookingId, hotelId, checkInDate, checkOutDate, roomsCount, totalAmount } = req.body;
 
+    const booking = await Booking.findById(bookingId).select('pnr');
+    if (!booking) {
+      return res.status(404).json({ status: 'fail', message: 'Booking not found.' });
+    }
+
     const hotel = await StationHotel.findById(hotelId);
     if (!hotel || hotel.availableRooms < roomsCount) {
       return res.status(400).json({ status: 'fail', message: 'Requested rooms not available.' });
@@ -68,6 +75,16 @@ export const bookHotel = async (req, res, next) => {
       roomsCount,
       totalAmount
     });
+
+    if (req.user?.email) {
+      sendHotelBookingConfirmation(
+        req.user.email,
+        hotelBooking,
+        hotel,
+        booking.pnr,
+        req.user.fullName,
+      ).catch((error) => console.error('Failed to send hotel booking confirmation email:', error));
+    }
 
     res.status(201).json({ status: 'success', data: hotelBooking });
   } catch (error) {

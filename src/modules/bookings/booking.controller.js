@@ -1,7 +1,11 @@
+import mongoose from 'mongoose';
 import { Booking } from './booking.model.js';
 import { Train } from '../trains/train.model.js';
 import { Journey } from '../journeys/journey.model.js';
-import mongoose from 'mongoose';
+import { sendBookingConfirmation } from '../../services/email.service.js';
+// Added to keep manual food orders in sync with the AI/Worker flow
+import { CateringOrder } from '../catering/catering.model.js';
+import { cateringQueue } from '../../workers/queues.js'; // Adjust path to your queue export
 
 // @desc    Step 1: Reserve seats and initialize a Pending booking
 export const createBooking = async (req, res, next) => {
@@ -47,7 +51,6 @@ export const createBooking = async (req, res, next) => {
 
     await journey.save({ session }); 
 
-    // Generate a mock payment intent ID
     const transactionId = `TXN-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
     const [newBooking] = await Booking.create([{
@@ -88,10 +91,9 @@ export const createBooking = async (req, res, next) => {
 // @access  Protected
 export const getUserBookings = async (req, res, next) => {
   try {
-    // Find bookings belonging to req.user and populate the train details
     const bookings = await Booking.find({ user: req.user._id })
       .populate('train', 'trainNumber trainName')
-      .sort({ createdAt: -1 }); // Newest first
+      .sort({ createdAt: -1 }); 
 
     res.status(200).json({
       status: 'success',
@@ -132,7 +134,7 @@ export const cancelBooking = async (req, res, next) => {
 
   try {
     const { id } = req.params;
-    const { passengerIds } = req.body; // Expecting ['pax-0', 'pax-2'] or [0, 2]
+    const { passengerIds } = req.body;
 
     if (!Array.isArray(passengerIds) || passengerIds.length === 0) {
       throw new Error('No passengers selected for cancellation');
@@ -151,7 +153,6 @@ export const cancelBooking = async (req, res, next) => {
     let wlCancelled = 0;
     const freedSeats = [];
 
-    // 1. Parse the incoming IDs to get the array indices
     const indicesToCancel = passengerIds.map(id => {
       if (typeof id === 'string' && id.startsWith('pax-')) {
         return parseInt(id.split('-')[1], 10);
@@ -159,7 +160,6 @@ export const cancelBooking = async (req, res, next) => {
       return parseInt(id, 10);
     });
 
-    // 2. Iterate only over the selected passenger indices
     indicesToCancel.forEach(index => {
       const p = booking.passengers[index];
       if (!p) throw new Error(`Passenger at index ${index} not found`);
@@ -171,10 +171,9 @@ export const cancelBooking = async (req, res, next) => {
       } else if (p.status === 'WAITLISTED') {
         wlCancelled++;
       }
-      p.status = 'CANCELLED'; // Mark only this passenger as cancelled
+      p.status = 'CANCELLED';
     });
     
-    // 3. Check if all passengers in the booking are now cancelled
     const allCancelled = booking.passengers.every(p => p.status === 'CANCELLED');
     if (allCancelled) {
       booking.bookingStatus = 'CANCELLED';
@@ -182,7 +181,6 @@ export const cancelBooking = async (req, res, next) => {
 
     await booking.save({ session });
 
-    // 4. Handle Seat Reallocation & Waitlist Upgrades
     const journey = await Journey.findOne({
       train: booking.train,
       journeyDate: booking.journeyDate
@@ -194,7 +192,6 @@ export const cancelBooking = async (req, res, next) => {
       if (classInventory) {
         classInventory.waitlistCount -= wlCancelled;
 
-        // If confirmed seats were freed, auto-upgrade the waitlist
         if (confirmedCancelled > 0) {
           const wlBookings = await Booking.find({
             train: booking.train,
@@ -210,16 +207,15 @@ export const cancelBooking = async (req, res, next) => {
             for (const p of wlBooking.passengers) {
               if (p.status === 'WAITLISTED' && freedSeats.length > 0) {
                 p.status = 'CONFIRMED';
-                p.seatNumber = freedSeats.pop(); // Assign the freed seat
+                p.seatNumber = freedSeats.pop();
                 classInventory.waitlistCount -= 1;
                 modified = true;
               }
             }
             if (modified) await wlBooking.save({ session });
-            if (freedSeats.length === 0) break; // Stop if we run out of freed seats
+            if (freedSeats.length === 0) break;
           }
 
-          // If there are still freed seats left (nobody on waitlist), return them to inventory
           classInventory.availableSeats += freedSeats.length;
         }
         await journey.save({ session });
@@ -244,7 +240,7 @@ export const cancelBooking = async (req, res, next) => {
 };
 
 // @desc    Step 2: Webhook to verify payment and finalize ticket or release seats
-// @access  Public (In production, this would verify a Razorpay/Stripe signature)
+// @access  Public
 export const verifyPayment = async (req, res, next) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -252,26 +248,36 @@ export const verifyPayment = async (req, res, next) => {
   try {
     const { transactionId, paymentStatus } = req.body;
 
-    const booking = await Booking.findOne({ transactionId }).session(session);
+    const booking = await Booking.findOne({ transactionId })
+      .populate('user', 'email fullName') // FIX 1: Match 'fullName' from userSchema
+      .populate('train', 'trainNumber trainName')
+      .session(session);
+
     if (!booking) throw new Error('Invalid transaction ID');
     if (booking.bookingStatus !== 'PENDING') throw new Error('Transaction already processed');
 
     if (paymentStatus === 'SUCCESS') {
-      // Payment successful: Generate PNR and finalize
       booking.pnr = Math.floor(1000000000 + Math.random() * 9000000000).toString();
       booking.paymentStatus = 'COMPLETED';
       booking.bookingStatus = 'SUCCESS';
       await booking.save({ session });
 
+      await session.commitTransaction();
+      session.endSession();
+
+      if (booking.user?.email) {
+        sendBookingConfirmation(booking.user.email, booking)
+          .catch(err => console.error('Failed to send booking email:', err));
+      }
+
     } else if (paymentStatus === 'FAILED') {
-      // Payment failed: Release seats back to inventory
       booking.paymentStatus = 'FAILED';
       booking.bookingStatus = 'FAILED';
       booking.passengers.forEach(p => p.status = 'CANCELLED');
       await booking.save({ session });
 
       const journey = await Journey.findOne({
-        train: booking.train,
+        train: booking.train._id || booking.train, // FIX 2: Safely extract _id from populated object
         journeyDate: booking.journeyDate
       }).session(session);
 
@@ -291,12 +297,12 @@ export const verifyPayment = async (req, res, next) => {
           await journey.save({ session });
         }
       }
+
+      await session.commitTransaction();
+      session.endSession();
     } else {
       throw new Error('Invalid payment status payload');
     }
-
-    await session.commitTransaction();
-    session.endSession();
 
     res.status(200).json({
       status: 'success',
@@ -305,7 +311,9 @@ export const verifyPayment = async (req, res, next) => {
     });
 
   } catch (error) {
-    await session.abortTransaction();
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
     session.endSession();
     if (error.message) return res.status(400).json({ status: 'fail', message: error.message });
     next(error);
@@ -314,13 +322,12 @@ export const verifyPayment = async (req, res, next) => {
 
 // @desc    Add a food order to an existing booking via PNR
 // @route   POST /api/bookings/:pnr/meals
-// @access  Protected (or Public if you want anyone with a PNR to order)
+// @access  Protected
 export const addMealToBooking = async (req, res, next) => {
   try {
     const { pnr } = req.params;
-    const { restaurantName, deliveryStation, items, totalAmount } = req.body;
+    const { vendorId, restaurantName, deliveryStation, items, totalAmount } = req.body;
 
-    // Find the booking by PNR
     const booking = await Booking.findOne({ pnr });
 
     if (!booking) {
@@ -330,7 +337,6 @@ export const addMealToBooking = async (req, res, next) => {
       });
     }
 
-    // Check if the booking is already cancelled or past
     if (booking.bookingStatus === 'CANCELLED') {
       return res.status(400).json({ 
         status: 'fail', 
@@ -338,21 +344,41 @@ export const addMealToBooking = async (req, res, next) => {
       });
     }
 
-    // Create the meal object
+    // FIX 3: Push to Booking.meals embedded array (for frontend display)
     const newMeal = {
       restaurantName,
       deliveryStation,
       items,
       totalAmount
     };
-
-    // Push into the booking document and save
     booking.meals.push(newMeal);
     await booking.save();
 
+    // FIX 4: Sync with Standalone CateringOrder & BullMQ
+    if (vendorId) {
+      const foodOrder = await CateringOrder.create({
+        bookingId: booking._id,
+        stationCode: deliveryStation,
+        vendorId: vendorId,
+        restaurantName: restaurantName,
+        items: items,
+        totalAmount: totalAmount,
+        deliveryEta: new Date(Date.now() + 45 * 60 * 1000), // ETA in 45 mins
+        status: 'PLACED'
+      });
+
+      // Dispatch to Kitchen/Vendor worker queue
+      if (cateringQueue) {
+        await cateringQueue.add('dispatchToVendor', {
+          orderId: foodOrder._id.toString(),
+          vendorId: vendorId
+        });
+      }
+    }
+
     res.status(200).json({
       status: 'success',
-      message: 'Food order confirmed and attached to PNR.',
+      message: 'Food order confirmed, attached to PNR, and dispatched to vendor.',
       data: { booking }
     });
   } catch (error) {

@@ -2,9 +2,16 @@ import { CateringOrder } from './catering.model.js';
 import { cateringQueue } from '../../workers/queues.js';
 import { CateringVendor } from './catering.vendor.model.js';
 import { Train } from '../trains/train.model.js';
+import { sendCateringConfirmation } from '../../services/email.service.js';
+import { Booking } from '../bookings/booking.model.js';
 export const placeCateringOrder = async (req, res, next) => {
   try {
     const { bookingId, stationCode, vendorId, restaurantName, items, deliveryEta } = req.body;
+
+    const booking = await Booking.findById(bookingId).select('pnr');
+    if (!booking) {
+      return res.status(404).json({ status: 'fail', message: 'Booking not found.' });
+    }
 
     const totalAmount = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
     
@@ -33,6 +40,11 @@ export const placeCateringOrder = async (req, res, next) => {
     );
 
     req.log?.info(`Catering order ${order._id} queued for ${restaurantName} (${vendorId}).`);
+    if (req.user?.email) {
+      sendCateringConfirmation(req.user.email, order, booking.pnr)
+        .catch((error) => console.error('Failed to send catering confirmation email:', error));
+    }
+
     res.status(201).json({ status: 'success', data: order });
   } catch (error) {
     next(error);
