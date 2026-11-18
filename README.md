@@ -1,39 +1,134 @@
-# Railway Management Backend
+# NXT_RAIL Management API
 
-This is the backend for Railway Management, a full-stack railway reservation and operations platform. The frontend for this project is available [here](https://github.com/amanfoundongithub/Railway-Management-Frontend).
+Node.js and Express REST API for the NXT_RAIL railway reservation and operations platform. It manages authentication, trains, journeys, bookings, PNR lookup, cancellations, inventory, travel add-ons, and authenticated AI-assisted travel requests.
 
-This project is built with `Express.js`, a lightweight Node.js framework for rapid backend development, and is designed to power the frontend booking, auth, ticketing, and admin workflows.
+**Related service:** [NXT_RAIL Frontend](https://github.com/amanfoundongithub/Railway-Management-Frontend)
 
-## Overview
+## Features
 
-The backend exposes REST APIs for handling railway operations such as user registration, login, train search, booking creation, ticket lookup, cancellations, status checks, and admin management.
+- JWT authentication and role-based authorization
+- Train search, schedules, live status, and station lookup
+- Booking creation, PNR lookup, history, cancellation, and payment webhook handling
+- Admin train and journey inventory management
+- Station E-catering, cab, hotel, and retiring-room services
+- MongoDB-backed domain models
+- Redis and BullMQ background-job support
+- Authenticated Gemini-powered NXT_RAIL AI Concierge
+- Confirmed-only booking actions for cabs, hotels, and catering
+- Helmet, CORS allowlisting, request limits, and structured logging
 
-## Key Features
+## Technology
 
-- User authentication and JWT-based authorization
-- Train search and availability APIs
-- Passenger booking and reservation creation
-- PNR-based booking lookup and status retrieval
-- Booking cancellation and refund-related flows
-- Ticket history access for authenticated users
-- Admin APIs for train inventory and operational management
-- MongoDB-backed persistence for users, bookings, and railway data
-- Authenticated NXT_RAIL AI Concierge powered by Google Gemini
-- PNR-aware travel assistance for E-catering, cabs, and station hotels
-- Agent-style function tools for live vendor lookup and fare estimation
-- Confirmed-only cab, hotel, and food booking execution
+| Category | Technology |
+| --- | --- |
+| Runtime | Node.js 18+, ES modules |
+| API | Express 5 |
+| Database | MongoDB, Mongoose |
+| Authentication | JSON Web Tokens, bcrypt |
+| Validation | Zod |
+| Queue | Redis, BullMQ |
+| AI | Google Gemini through `@google/genai` |
+| Email | Nodemailer |
+| Security | Helmet, CORS |
+| Logging | Pino, Morgan |
+
+## Prerequisites
+
+- Node.js 18 or newer
+- npm
+- MongoDB or a MongoDB Atlas connection
+- Redis, for background catering job processing
+- Optional: Google Gemini API credentials
+- Optional: SMTP credentials for email delivery
+
+## Quick Start
+
+1. Install dependencies:
+
+   ```bash
+   npm install
+   ```
+
+2. Create the local environment file:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+3. Configure the required values:
+
+   ```env
+   MONGODB_URL=mongodb://127.0.0.1:27017/nxt_rail
+   JWT_SECRET=<use-a-long-random-secret>
+   REDIS_URI=redis://127.0.0.1:6379
+   CORS_ORIGIN=http://localhost:3000
+   ```
+
+   `MONGODB_URL` and `JWT_SECRET` are required. Redis is needed for the BullMQ catering worker. One or more comma-separated origins may be supplied in `CORS_ORIGIN`.
+
+4. Start Redis and MongoDB locally, or point the variables at hosted services.
+
+5. Start the API:
+
+   ```bash
+   npm run dev
+   ```
+
+The API listens on `http://localhost:5001` by default. Change `PORT` in `.env` if needed.
+
+## Environment Variables
+
+| Variable | Required | Default | Purpose |
+| --- | --- | --- | --- |
+| `MONGODB_URL` | Yes | None | MongoDB connection string |
+| `JWT_SECRET` | Yes | None | JWT signing and verification secret |
+| `NODE_ENV` | No | `development` | Runtime mode and request logging |
+| `PORT` | No | `5000` | HTTP server port |
+| `LOG_LEVEL` | No | Environment-dependent | Pino log level |
+| `CORS_ORIGIN` | No | `http://localhost:3000` | Comma-separated allowed browser origins |
+| `REDIS_URI` | Worker only | None | Redis connection string for BullMQ |
+| `GEMINI_API_KEY` | AI only | None | Google Gemini API key |
+| `GEMINI_MODEL` | AI only | None | Gemini model identifier |
+| `SMTP_HOST` | Email only | None | SMTP server |
+| `SMTP_PORT` | Email only | None | SMTP port |
+| `SMTP_USER` | Email only | None | SMTP username |
+| `SMTP_PASS` | Email only | None | SMTP password |
+| `EMAIL_FROM` | Email only | None | Sender address and display name |
+
+Use a strong, unique `JWT_SECRET` in production. Never commit populated `.env` files or credentials.
+
+## API Areas
+
+| Base path | Responsibility |
+| --- | --- |
+| `/api/auth` | Registration, login, current user, and account updates |
+| `/api/trains` | Search, live status, schedules, and train operations |
+| `/api/bookings` | Booking, PNR lookup, history, cancellation, and payments |
+| `/api/stations` | Station search and station management |
+| `/api/journeys` | Journey and seat availability |
+| `/api/admin` | Dashboard, inventory, and bulk train status |
+| `/api/catering` | Catering vendors, menus, orders, and delays |
+| `/api/cabs` | Cab vendors and cab bookings |
+| `/api/hotels` | Hotel and retiring-room listings and bookings |
+| `/api/ai-concierge` | Authenticated Gemini travel assistance |
+
+## Health Checks
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/health/live` | Process liveness |
+| `GET /api/health/ready` | Database readiness |
+| `GET /api/health` | General service status |
 
 ## AI Concierge
 
-The backend exposes an authenticated Gemini chat endpoint:
+Send an authenticated request to the concierge:
 
 ```text
 POST /api/ai-concierge/chat
 Authorization: Bearer <JWT>
 Content-Type: application/json
 ```
-
-Example body:
 
 ```json
 {
@@ -47,49 +142,28 @@ Example body:
 }
 ```
 
-The concierge can use these function tools:
+The concierge uses bounded function tools for PNR context, station catering, cab estimates, hotel lookup, and confirmed bookings. Cab estimates use railway-station coordinates and OpenStreetMap/Nominatim geocoding. If geocoding is unavailable, the existing fallback estimate is used.
 
-| Tool | Purpose |
+Booking tools must not execute until the response identifies the exact service and total and the user explicitly confirms it. Model and tool calls are capped per request.
+
+## Scripts
+
+| Command | Description |
 | --- | --- |
-| `get_pnr_context` | Resolve a PNR, booking, train route, stops, and booking ID |
-| `get_station_food_vendors` | List station catering vendors and menus |
-| `book_station_food` | Place a catering order after explicit confirmation |
-| `get_station_cabs_and_estimate` | List station cab vendors and estimate distance and fare |
-| `book_station_cab` | Create a confirmed cab booking |
-| `get_station_hotels` | List station hotels and retiring rooms |
-| `book_station_hotel` | Create a confirmed hotel or room reservation |
+| `npm start` | Start the API with Node.js |
+| `npm run dev` | Start the API with Nodemon |
 
-Cab distance estimates use the railway station coordinates and OpenStreetMap/Nominatim geocoding. The current implementation falls back to a 10 km estimate when geocoding is unavailable. Tool execution is limited to five model/tool loops per chat request.
+There is currently no automated test script. `npm test` should not be used as a CI check until test coverage is implemented.
 
-Booking tools create database records only after the Gemini conversation has presented the exact selection and total and the user has explicitly confirmed it.
+## Database Seeding
 
-## How To Run?
+The [`scripts/`](./scripts) directory contains Python utilities for importing stations and trains. Review [scripts/README.md](./scripts/README.md) before running them.
 
-To run this project, you need to have Node.js and npm installed. Once available on your local machine, running the project is straightforward.
+## Production Considerations
 
-For a first run, you need to install the project dependencies:
-
-```bash
-npm install
-```
-
-You also need to configure local environment variables. Create a `.env` file in the project root based on your `.env.example` and add the required values:
-
-```text
-MONGODB_URL = the URL for the MongoDB cluster
-JWT_SECRET  = the JWT secret used for authentication
-GEMINI_API_KEY = your Google Gemini API key
-GEMINI_MODEL = the Gemini model identifier, for example gemini-3.1-pro-preview
-```
-
-Once dependencies are installed and the environment is configured, start the server with:
-
-```bash
-npm run dev
-```
-
-This will run the backend in development mode. By default, it listens on port `5001`, though this can be changed in the `.env` file.
-
-## Related Project
-
-- Frontend: [Railway Management Frontend](https://github.com/amanfoundongithub/Railway-Management-Frontend)
+- Set `NODE_ENV=production`, `PORT`, and `CORS_ORIGIN` for the deployment environment.
+- Use a managed MongoDB deployment and Redis instance.
+- Store secrets in a secret manager rather than a repository or deployment configuration file.
+- Terminate TLS at the reverse proxy or platform load balancer.
+- Restrict CORS origins to the deployed frontend origin.
+- Configure SMTP only when email is enabled.

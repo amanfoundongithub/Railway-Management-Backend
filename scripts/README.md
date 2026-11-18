@@ -1,71 +1,101 @@
-# Python Scripts For Database
+# Database Seed Scripts
 
-Due to limited time & resources, we have developed a Python script to populate the database by hitting on the server.
+Utility scripts for populating MongoDB with station and train records through the running NXT_RAIL API.
 
-Feel free to add more stations & trains in the script.
+## Available Scripts
 
-## How To Run?
+| Script | Purpose |
+| --- | --- |
+| `make_stations.py` | Creates the station records used by train routes and station services. |
+| `update_stations_cordinates.py` | Adds latitude and longitude to the seeded stations for map and cab-distance features. |
+| `make_trains.py` | Creates train records, routes, stops, and coach configuration. |
+| `make_vendors.py` | Creates E-catering vendors and their menus for supported stations. |
+| `make_cabs.py` | Creates cab vendors and vehicle/fare options for supported stations. |
+| `make_hotels.py` | Creates station hotels, retiring rooms, and dormitory options. |
 
-To run the script, follow the instructions from the root of the repository:
+These scripts send data to the running API; they do not write directly to MongoDB.
+
+Review and adjust the source data in each script before importing it.
+
+## Prerequisites
+
+- Python 3
+- A running NXT_RAIL backend
+- An authenticated administrator account
+- Dependencies from `requirements.txt`
+
+## Setup
+
+From the backend project root:
 
 ```bash
 cd scripts
+python3 -m venv .venv
+
+# macOS/Linux
+source .venv/bin/activate
+
+# Windows
+.venv\Scripts\activate
+
+python -m pip install -r requirements.txt
 ```
 
-Make a virtual environment using the python command:
+## Create an Administrator Token
 
-```bash
-python -m venv .venv
-```
+Log in through the API:
 
-Use this virtual environment, and install requirements:
-
-```bash
-pip install -r requirements.txt --no-user
-```
-
-Install dependencies, then run the code as follows:
-
-```bash
-python make_stations.py
-python make_trains.py
-```
-
-This will run the code, and this will generate all the trains & stations.
-
-## Notes on Getting JWT Token
-
-This code requires you to put the JWT key for the admin account to start.
-
-To generate a token, you need to go to perform the following request:
-
-```bash
+```text
 POST http://localhost:5001/api/auth/login
+Content-Type: application/json
 ```
-
-with the request body:
 
 ```json
 {
-  "email": "<email>",
-  "password": "<password>"
+  "email": "<administrator-email>",
+  "password": "<administrator-password>"
 }
 ```
 
-You will get a response like this:
+The response contains a JWT:
 
 ```json
 {
-    "status": "success",
-    "token": "<jwt token>",
-    "data": {
-        "user": "<user details"
-    }
+  "status": "success",
+  "token": "<jwt-token>",
+  "data": {
+    "user": {}
+  }
 }
 ```
 
-Copy the jwt token and paste it in the Python files in the variable `AUTH_TOKEN` in the respective file(s).
+Set the returned token as `AUTH_TOKEN` in each script before running it. Do not commit a real token.
 
-## Queries?
+## Run All Scripts
 
-For any queries/feedback, please reach out to my personal on my GitHub profile.
+From the `scripts` directory, run the scripts in this order. The station records must exist before coordinates and station-based services are added; seed stations before trains so routes can refer to them.
+
+```bash
+# Create the stations
+python make_stations.py
+
+# Add station coordinates
+python update_stations_cordinates.py
+
+# Create train routes and coach data
+python make_trains.py
+
+# Add station-based services
+python make_vendors.py
+python make_cabs.py
+python make_hotels.py
+```
+
+Each script reports successful and failed API requests. Review the output before proceeding to the next script. These scripts create records, so avoid rerunning them against a database that already contains the same seed data unless duplicate behavior is understood.
+
+## Safety
+
+- The scripts make live API requests; verify each `API_URL` points to the intended environment.
+- Start with a development database.
+- Do not store real JWTs or credentials in committed source files.
+- Existing or duplicate records may be rejected or updated depending on the API implementation.

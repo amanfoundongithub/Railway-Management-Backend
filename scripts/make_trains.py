@@ -2,8 +2,8 @@ import requests
 import time
 
 # --- CONFIGURATION ---
-API_URL = "your_admin_jwt_token_here"
-AUTH_TOKEN = "<Add your admin auth token>"  # Replace with your real token
+API_URL = "http://localhost:5001/api/trains"
+AUTH_TOKEN = "your_admin_jwt_token_here"  # Replace with your real token
 
 HEADERS = {
     "Authorization": f"Bearer {AUTH_TOKEN}",
