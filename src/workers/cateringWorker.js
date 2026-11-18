@@ -1,10 +1,9 @@
 import { Worker } from 'bullmq';
-import Redis from 'ioredis';
 import { CateringOrder } from '../modules/catering/catering.model.js';
+import redisConnection from '../config/redis.js';
+import { Logger } from '../../utils/logger.js';
 
-const redisConnection = new Redis(process.env.REDIS_URI || 'redis://127.0.0.1:6379', {
-  maxRetriesPerRequest: null,
-});
+const logger = new Logger("Catering_Worker");
 
 export const cateringWorker = new Worker('cateringQueue', async (job) => {
   if (job.name === 'dispatchToVendor') {
@@ -13,7 +12,7 @@ export const cateringWorker = new Worker('cateringQueue', async (job) => {
     // 1. Fetch the order
     const order = await CateringOrder.findById(orderId);
     if (!order || order.status === 'CANCELLED') {
-      console.log(`[Worker] Order ${orderId} cancelled or not found. Skipping.`);
+      logger.warn(`[Worker] Order ${orderId} cancelled or not found. Skipping.`);
       return;
     }
 
@@ -24,10 +23,17 @@ export const cateringWorker = new Worker('cateringQueue', async (job) => {
     order.status = 'PREPARING';
     await order.save();
     
-    console.log(`[Worker] Fired dispatch event for Order ${orderId} to Vendor ${vendorId}`);
+    logger.info(`[Worker] Fired dispatch event for Order ${orderId} to Vendor ${vendorId}`);
   }
 }, { connection: redisConnection });
 
+// Startup and Event Logs
+logger.info('[Worker] Catering background worker initialized and listening on queue: cateringQueue');
+
+cateringWorker.on('ready', () => {
+  logger.info('[Worker] Catering worker is connected to Redis and ready for jobs.');
+});
+
 cateringWorker.on('failed', (job, err) => {
-  console.error(`[Worker] Job ${job.id} failed:`, err);
+  logger.error(`[Worker] Job ${job.id} failed:`, err);
 });

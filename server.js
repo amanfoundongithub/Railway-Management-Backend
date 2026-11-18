@@ -4,6 +4,7 @@ import { Logger } from './utils/logger.js';
 import { connectDB, disconnectDB } from './src/config/db.js';
 import app from './src/app.js';
 import './src/workers/cateringWorker.js';
+import './src/config/redis.js';
 
 const logger = new Logger("Server");
 
