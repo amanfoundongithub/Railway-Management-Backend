@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 import mongoose from 'mongoose';
-// 1. Mock external services
+
+// 1. Mock external services & queues cleanly at the top
 jest.mock('../../src/services/email.service.js', () => ({
   sendBookingConfirmation: jest.fn().mockResolvedValue(true)
 }));
@@ -11,10 +12,10 @@ import request from 'supertest';
 import app from '../../src/app.js';
 import { Booking } from '../../src/modules/bookings/booking.model.js';
 import { Train } from '../../src/modules/trains/train.model.js';
-import { Journey } from '../../src/modules/journeys/journey.model.js'; // Adjust path
+import { Journey } from '../../src/modules/journeys/journey.model.js';
 import { User } from '../../src/modules/auth/auth.model.js';
 import { CateringOrder } from '../../src/modules/catering/catering.model.js';
-import { cateringQueue } from '../../src/workers/queues.js';
+import { cateringQueue } from '../../src/workers/queues.js'; // Automatically receives the mock above
 import jwt from 'jsonwebtoken';
 
 jest.spyOn(cateringQueue, 'add').mockResolvedValue(true);
@@ -124,7 +125,6 @@ describe('Booking API Endpoints - Rigorous Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`)
         .send({ ...bookingPayload, trainId: train._id, passengers });
 
-      // Assuming validateRequest returns 400
       expect(res.statusCode).toBe(400); 
     });
   });
@@ -175,7 +175,7 @@ describe('Booking API Endpoints - Rigorous Integration Tests', () => {
 
       // Verify seats were released
       const updatedJourney = await Journey.findById(journey._id);
-      expect(updatedJourney.seatInventory[0].availableSeats).toBe(2); // Restored!
+      expect(updatedJourney.seatInventory[0].availableSeats).toBe(2); 
     });
   });
 
@@ -201,16 +201,16 @@ describe('Booking API Endpoints - Rigorous Integration Tests', () => {
       const res = await request(app)
         .patch(`/api/bookings/cancel/${bookingId}`)
         .set('Authorization', `Bearer ${authToken}`)
-        .send({ passengerIds: [0] }); // Cancel passenger at index 0
+        .send({ passengerIds: [0] });
 
       expect(res.statusCode).toBe(200);
       
       const booking = await Booking.findById(bookingId);
       expect(booking.passengers[0].status).toBe('CANCELLED');
-      expect(booking.bookingStatus).toBe('CANCELLED'); // Fully cancelled because it was 1 pax
+      expect(booking.bookingStatus).toBe('CANCELLED');
 
       const updatedJourney = await Journey.findById(journey._id);
-      expect(updatedJourney.seatInventory[0].availableSeats).toBe(2); // Restored
+      expect(updatedJourney.seatInventory[0].availableSeats).toBe(2); 
     });
 
     it('2. should reject cancellation if no passengerIds array is provided', async () => {
@@ -240,7 +240,6 @@ describe('Booking API Endpoints - Rigorous Integration Tests', () => {
           passengers: [{ name: 'John', age: 30, gender: 'M' }]
         });
       
-      // Pay to generate PNR
       const pRes = await request(app)
         .post('/api/bookings/payment-webhook')
         .set('Authorization', `Bearer ${authToken}`)
@@ -274,7 +273,7 @@ describe('Booking API Endpoints - Rigorous Integration Tests', () => {
       const cateringOrders = await CateringOrder.find({ bookingId: booking._id });
       expect(cateringOrders).toHaveLength(1);
 
-      // Verify queue was triggered
+      // Verify queue was triggered successfully
       expect(cateringQueue.add).toHaveBeenCalledTimes(1);
     });
 
