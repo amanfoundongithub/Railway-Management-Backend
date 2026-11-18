@@ -1,5 +1,7 @@
 import { CabVendor, CabBooking } from './cab.model.js';
 import { Train } from '../trains/train.model.js';
+import { Booking } from '../bookings/booking.model.js';
+import { sendCabBookingConfirmation } from '../../services/email.service.js';
 
 export const getStationsWithCabs = async (req, res, next) => {
   try {
@@ -51,7 +53,20 @@ export const getStationsWithCabs = async (req, res, next) => {
 export const bookCab = async (req, res, next) => {
   try {
     const { bookingId, stationCode, vendorId, vehicleType, pickupTime, dropLocation, fare } = req.body;
-    
+
+    const [booking, vendor] = await Promise.all([
+      Booking.findById(bookingId).select('pnr'),
+      CabVendor.findById(vendorId),
+    ]);
+
+    if (!booking) {
+      return res.status(404).json({ status: 'fail', message: 'Booking not found.' });
+    }
+
+    if (!vendor) {
+      return res.status(404).json({ status: 'fail', message: 'Cab vendor not found.' });
+    }
+
     const cabBooking = await CabBooking.create({
       bookingId,
       stationCode,
@@ -61,6 +76,16 @@ export const bookCab = async (req, res, next) => {
       dropLocation,
       fare
     });
+
+    if (req.user?.email) {
+      sendCabBookingConfirmation(
+        req.user.email,
+        cabBooking,
+        vendor,
+        booking.pnr,
+        req.user.fullName,
+      ).catch((error) => console.error('Failed to send cab booking confirmation email:', error));
+    }
 
     res.status(201).json({ status: 'success', data: cabBooking });
   } catch (error) {

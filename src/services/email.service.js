@@ -315,6 +315,110 @@ export const sendCateringConfirmation = async (userEmail, orderDetails, pnr) => 
   return sendEmail({ to: userEmail, subject, html });
 };
 
+export const sendCabBookingConfirmation = async (
+  userEmail,
+  cabBookingDetails,
+  cabVendorDetails,
+  pnr,
+  guestName,
+) => {
+  const selectedVehicle = (cabVendorDetails.vehicles || []).find((vehicle) => (
+    String(vehicle.type).toLowerCase() === String(cabBookingDetails.vehicleType).toLowerCase()
+  ));
+  const subject = `Cab booking confirmed - PNR: ${pnr || 'N/A'}`;
+  const html = `
+    <div style="margin: 0; padding: 24px 12px; background-color: #f1f5f9; font-family: Arial, Helvetica, sans-serif; color: #0f172a;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width: 650px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; border-spacing: 0; overflow: hidden;">
+        <tr>
+          <td style="padding: 28px 32px; background-color: #123b68; color: #ffffff;">
+            <div style="font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase; opacity: 0.85;">NXT_RAIL CAB</div>
+            <h1 style="margin: 10px 0 6px; font-size: 25px;">Cab booking confirmed</h1>
+            <p style="margin: 0; color: #dbeafe; font-size: 14px;">Your ride has been arranged for your journey.</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 26px 32px;">
+            <p style="margin: 0 0 8px; font-size: 15px;">Dear ${displayValue(guestName || 'Guest')},</p>
+            <p style="margin: 0 0 22px; color: #64748b; font-size: 14px; line-height: 1.6;">Your cab reservation linked to your train booking is confirmed.</p>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 22px; background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; border-spacing: 0;">
+              <tr>
+                <td style="padding: 14px 16px; color: #475569; font-size: 13px;">TRAIN BOOKING PNR</td>
+                <td align="right" style="padding: 14px 16px; color: #123b68; font-size: 20px; font-weight: 700; letter-spacing: 1px;">${displayValue(pnr)}</td>
+              </tr>
+            </table>
+
+            <h2 style="margin: 0 0 12px; color: #172554; font-size: 18px;">Ride details</h2>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid #e2e8f0; border-radius: 8px; border-spacing: 0;">
+              <tr>
+                <td style="width: 50%; padding: 13px 15px; border-bottom: 1px solid #e8edf3;">
+                  <div style="color: #64748b; font-size: 12px;">CAB PROVIDER</div>
+                  <div style="margin-top: 4px; color: #0f172a; font-weight: 600;">${displayValue(cabVendorDetails.name)}</div>
+                  <div style="margin-top: 3px; color: #64748b; font-size: 13px;">Rating: ${displayValue(cabVendorDetails.rating)} / 5</div>
+                </td>
+                <td style="width: 50%; padding: 13px 15px; border-bottom: 1px solid #e8edf3;">
+                  <div style="color: #64748b; font-size: 12px;">VEHICLE</div>
+                  <div style="margin-top: 4px; color: #0f172a; font-weight: 600;">${displayValue(cabBookingDetails.vehicleType)}</div>
+                  ${selectedVehicle ? `<div style="margin-top: 3px; color: #64748b; font-size: 13px;">Capacity: ${displayValue(selectedVehicle.capacity)} passengers</div>` : ''}
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 13px 15px;">
+                  <div style="color: #64748b; font-size: 12px;">PICKUP STATION</div>
+                  <div style="margin-top: 4px; color: #0f172a; font-weight: 600;">${displayValue(cabBookingDetails.stationCode)}</div>
+                </td>
+                <td style="padding: 13px 15px;">
+                  <div style="color: #64748b; font-size: 12px;">PICKUP TIME</div>
+                  <div style="margin-top: 4px; color: #0f172a; font-weight: 600;">${formatDateTime(cabBookingDetails.pickupTime)}</div>
+                </td>
+              </tr>
+              <tr>
+                <td colspan="2" style="padding: 13px 15px; border-top: 1px solid #e8edf3;">
+                  <div style="color: #64748b; font-size: 12px;">DROP-OFF LOCATION</div>
+                  <div style="margin-top: 4px; color: #0f172a; font-weight: 600;">${displayValue(cabBookingDetails.dropLocation)}</div>
+                </td>
+              </tr>
+            </table>
+
+            ${selectedVehicle ? `
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top: 14px; border: 1px solid #e2e8f0; border-radius: 8px; border-spacing: 0;">
+                <tr>
+                  <td style="padding: 12px 15px; color: #64748b;">Base fare</td>
+                  <td align="right" style="padding: 12px 15px; color: #334155;">${formatCurrency(selectedVehicle.baseFare)}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 12px 15px; border-top: 1px solid #e8edf3; color: #64748b;">Rate per km</td>
+                  <td align="right" style="padding: 12px 15px; border-top: 1px solid #e8edf3; color: #334155;">${formatCurrency(selectedVehicle.pricePerKm)}</td>
+                </tr>
+              </table>
+            ` : ''}
+
+            <h2 style="margin: 28px 0 12px; color: #172554; font-size: 18px;">Fare and booking</h2>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid #e2e8f0; border-radius: 8px; border-spacing: 0;">
+              <tr>
+                <td style="padding: 12px 15px; color: #64748b;">Ride status</td>
+                <td align="right" style="padding: 12px 15px; color: #047857; font-weight: 700;">${displayValue(cabBookingDetails.status)}</td>
+              </tr>
+              <tr>
+                <td style="padding: 12px 15px; border-top: 1px solid #e8edf3; color: #64748b;">Cab reservation ID</td>
+                <td align="right" style="padding: 12px 15px; border-top: 1px solid #e8edf3; color: #334155; font-size: 13px;">${displayValue(cabBookingDetails._id)}</td>
+              </tr>
+              <tr>
+                <td style="padding: 14px 15px; border-top: 1px solid #e8edf3; color: #0f172a; font-weight: 700;">Total fare</td>
+                <td align="right" style="padding: 14px 15px; border-top: 1px solid #e8edf3; color: #123b68; font-size: 18px; font-weight: 700;">${formatCurrency(cabBookingDetails.fare)}</td>
+              </tr>
+            </table>
+
+            <p style="margin: 26px 0 0; color: #64748b; font-size: 12px; line-height: 1.6;">This is an automated cab booking confirmation. Please do not reply to this message.</p>
+          </td>
+        </tr>
+      </table>
+    </div>
+  `;
+
+  return sendEmail({ to: userEmail, subject, html });
+};
+
 export const sendHotelBookingConfirmation = async (
   userEmail,
   hotelBookingDetails,
