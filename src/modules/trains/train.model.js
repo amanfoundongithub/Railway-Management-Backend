@@ -63,11 +63,13 @@ const trainSchema = new mongoose.Schema({
     type: String,
     required: true,
     uppercase: true,
+    trim: true,
   },
   destination: {
     type: String,
     required: true,
     uppercase: true,
+    trim: true,
   },
   // The schedule of stops along the journey
   route: [stationStopSchema],
