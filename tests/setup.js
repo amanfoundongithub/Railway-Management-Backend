@@ -3,6 +3,8 @@ import mongoose from 'mongoose';
 
 let mongoServer;
 
+process.env.JWT_SECRET = 'test-secret-key-12345';
+
 beforeAll(async () => {
   mongoose.set('strictQuery', false);
   mongoServer = await MongoMemoryServer.create();
