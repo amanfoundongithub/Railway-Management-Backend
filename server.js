@@ -21,7 +21,6 @@ const startServer = async () => {
                 host : HOST, 
                 baseUrl : `http://${HOST}:${PORT}`
             });
-            logger.info("BullMQ consumer activated.");
         });
         const shutdown = async (signal) => {
             logger.info(`[SERVER_SHUTDOWN] Received stopping signal from keyboard stroke: ${signal}`, {
