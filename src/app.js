@@ -2,6 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import mongoose from 'mongoose'; // <-- ADDED: Required for your health check
+
+// Route imports
 import authRoutes from './modules/auth/auth.routes.js'; 
 import trainRoutes from './modules/trains/train.routes.js';
 import bookingRoutes from './modules/bookings/booking.routes.js';
@@ -74,11 +77,15 @@ app.use(
 if (process.env.NODE_ENV === 'development') {
     app.use(morgan("dev"));
 } else {
-    app.use(morgan("combined"));
+    app.use(morgan("combined")); // Also applies to 'test' so logs aren't too noisy
 }
 
-// Register the routers
-app.use("/api/auth",authRoutes);
+/*
+|--------------------------------------------------------------------------
+| Routes
+|--------------------------------------------------------------------------
+*/
+app.use("/api/auth", authRoutes);
 app.use('/api/trains', trainRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/stations', stationRoutes);
@@ -102,8 +109,7 @@ app.get('/api/health/live', (req, res) => {
 });
 
 app.get('/api/health/ready', (req, res) => {
-    const isDatabaseConnected =
-        mongoose.connection.readyState === 1;
+    const isDatabaseConnected = mongoose.connection.readyState === 1;
 
     if (!isDatabaseConnected) {
         return res.status(503).json({
@@ -125,12 +131,50 @@ app.get('/api/health', (req, res) => {
     });
 });
 
+/*
+|--------------------------------------------------------------------------
+| Global Error Handler
+|--------------------------------------------------------------------------
+*/
 app.use((err, req, res, next) => {
-  console.error(`[Error] ${err.message}`);
+  // Suppress expected error logs during testing to keep the console clean
+  if (process.env.NODE_ENV !== 'test') {
+      console.error(`[Error] ${err.name}: ${err.message}`);
+  }
+
+  // 1. Intercept Mongoose Validation Errors
+  if (err.name === 'ValidationError') {
+    const messages = Object.values(err.errors).map(val => val.message);
+    return res.status(400).json({
+      status: 'fail',
+      message: `Invalid input data. ${messages.join('. ')}`
+    });
+  }
+
+  // 2. Intercept Mongoose CastErrors (e.g., invalid ObjectIds)
+  if (err.name === 'CastError') {
+    return res.status(400).json({
+      status: 'fail',
+      message: `Invalid ${err.path}: ${err.value}.`
+    });
+  }
+
+  // 3. Default Error Fallback
   const statusCode = err.statusCode || 500;
-  res.status(statusCode).json({ status: 'error', message: err.message || 'Internal Server Error' });
+  res.status(statusCode).json({ 
+      status: statusCode === 500 ? 'error' : 'fail', 
+      message: err.message || 'Internal Server Error' 
+  });
 });
 
-startInventoryCron();
+/*
+|--------------------------------------------------------------------------
+| Background Workers
+|--------------------------------------------------------------------------
+*/
+// Prevent the cron job from starting during Jest tests, otherwise Jest will hang forever!
+if (process.env.NODE_ENV !== 'test') {
+    startInventoryCron();
+}
 
 export default app;
