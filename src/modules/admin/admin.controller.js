@@ -14,8 +14,9 @@ export const getDashboardStats = async (req, res, next) => {
     const totalUsers = await User.countDocuments({ role: 'PASSENGER' });
 
     // 3. Aggregate revenue and ticket counts from successful bookings
+    const oneMonthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const bookingStats = await Booking.aggregate([
-      { $match: { bookingStatus: 'CONFIRMED' } },
+      { $match: { bookingStatus: 'SUCCESS', createdAt: { $gte: oneMonthAgo } } },
       { 
         $group: { 
           _id: null, 
