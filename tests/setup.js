@@ -1,30 +1,27 @@
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryReplSet } from 'mongodb-memory-server'; // <-- CHANGED
 import mongoose from 'mongoose';
 
-let mongoServer;
-
+// Inject fake environment variables for tests
 process.env.JWT_SECRET = 'test-secret-key-12345';
 
+let replSet; // <-- CHANGED
+
 beforeAll(async () => {
-  mongoose.set('strictQuery', false);
-  mongoServer = await MongoMemoryServer.create();
-  const uri = mongoServer.getUri();
+  // Start an in-memory Replica Set required for MongoDB Transactions
+  replSet = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
+  const uri = replSet.getUri();
+
   await mongoose.connect(uri);
 });
 
 afterEach(async () => {
   const collections = mongoose.connection.collections;
   for (const key in collections) {
-    await collections[key].deleteMany();
+    await collections[key].deleteMany({});
   }
 });
 
 afterAll(async () => {
-  if (mongoose.connection.readyState !== 0) {
-    await mongoose.connection.dropDatabase();
-    await mongoose.connection.close();
-  }
-  if (mongoServer) {
-    await mongoServer.stop();
-  }
+  await mongoose.disconnect();
+  await replSet.stop(); // <-- CHANGED
 });
